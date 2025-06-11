@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
 	// "github.com/garaemon/devgo/pkg/config"
 	// "github.com/garaemon/devgo/pkg/devcontainer"
 	// "github.com/garaemon/devgo/pkg/docker"
@@ -20,12 +19,12 @@ var (
 
 func Execute() error {
 	flag.Parse()
-	
+
 	if *showHelp {
 		showUsage()
 		return nil
 	}
-	
+
 	args := flag.Args()
 	return runDevContainer(args)
 }
@@ -51,12 +50,12 @@ func runDevContainer(args []string) error {
 	// TODO: Implement actual functionality
 	fmt.Printf("devgo called with args: %v\n", args)
 	fmt.Printf("config: %s, build: %t, name: %s\n", *configPath, *forceBuild, *containerName)
-	
+
 	devcontainerPath, err := findDevcontainerConfig(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to find devcontainer config: %w", err)
 	}
-	
+
 	fmt.Printf("Found devcontainer config at: %s\n", devcontainerPath)
 	return nil
 }
@@ -76,7 +75,7 @@ func findDevcontainerConfig(configPath string) (string, error) {
 		if _, err := os.Stat(configFile); err == nil {
 			return configFile, nil
 		}
-		
+
 		configFile = filepath.Join(dir, ".devcontainer.json")
 		if _, err := os.Stat(configFile); err == nil {
 			return configFile, nil
