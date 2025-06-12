@@ -1,0 +1,21 @@
+{
+  "name": "Custom Build Container",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".",
+    "args": {
+      "VARIANT": "3.9",
+      "INSTALL_NODE": "true"
+    }
+  },
+  "workspaceFolder": "/app",
+  "remoteUser": "developer",
+  "onCreateCommand": "pip install -r requirements.txt",
+  "postStartCommand": ["echo", "Container started!"],
+  "portsAttributes": {
+    "8000": {
+      "label": "Django Dev Server",
+      "onAutoForward": "notify"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Go Dev Container",
+  "image": "golang:1.21",
+  "workspaceFolder": "/workspace",
+  "containerUser": "vscode",
+  "containerEnv": {
+    "GO111MODULE": "on",
+    "GOPROXY": "direct"
+  },
+  "forwardPorts": [3000, 8080],
+  "postCreateCommand": "go mod download"
+}
