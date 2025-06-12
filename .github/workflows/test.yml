@@ -33,12 +33,21 @@ jobs:
     - name: Download dependencies
       run: go mod download
       
-    - name: Run tests
-      run: make test
+    - name: Run tests with coverage
+      run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
       
     - name: Build
       run: make build
       
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        file: ./coverage.out
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+        
     - name: Run basic smoke test
       run: |
         ./devgo --help
