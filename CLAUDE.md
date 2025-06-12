@@ -61,6 +61,6 @@ make install
 - ✅ Basic CLI structure with flag parsing
 - ✅ devcontainer.json discovery logic
 - ✅ GitHub Actions CI/CD pipeline
-- 🚧 devcontainer.json parser (in progress)
+- ✅ devcontainer.json parser with comprehensive test coverage
 - 🚧 Docker container runner (pending)
-- 🚧 Unit tests (pending)
+- 🚧 Integration tests (pending)
