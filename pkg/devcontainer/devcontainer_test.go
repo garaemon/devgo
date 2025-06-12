@@ -1,7 +1,9 @@
 package devcontainer
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -105,6 +107,34 @@ func TestParse_NonExistentFile(t *testing.T) {
 	_, err := Parse("nonexistent.json")
 	if err == nil {
 		t.Error("Parse() should return error for non-existent file")
+	}
+}
+
+func TestParse_BrokenJSON(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "broken-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	brokenJSON := `{
+		"name": "Broken Container",
+		"image": "golang:1.21"
+		"workspaceFolder": "/workspace"
+	}`
+
+	if _, err := tmpFile.WriteString(brokenJSON); err != nil {
+		t.Fatalf("Failed to write to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	_, err = Parse(tmpFile.Name())
+	if err == nil {
+		t.Error("Parse() should return error for broken JSON")
+	}
+
+	if !strings.Contains(err.Error(), "failed to parse devcontainer.json") {
+		t.Errorf("Expected error message to contain 'failed to parse devcontainer.json', got: %v", err)
 	}
 }
 
