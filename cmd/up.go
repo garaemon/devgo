@@ -10,6 +10,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/garaemon/devgo/pkg/constants"
 	"github.com/garaemon/devgo/pkg/devcontainer"
 )
 
@@ -194,11 +195,17 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 		}
 	}
 
-	// Create container configuration
+	// Create container configuration with devgo labels
+	labels := map[string]string{
+		constants.DevgoManagedLabel:   constants.DevgoManagedValue,
+		constants.DevgoWorkspaceLabel: args.WorkspaceDir,
+	}
+	
 	config := &container.Config{
-		Image: args.Image,
-		Cmd:   []string{"sleep", "infinity"},
-		Env:   env,
+		Image:  args.Image,
+		Cmd:    []string{"sleep", "infinity"},
+		Env:    env,
+		Labels: labels,
 	}
 
 	// Create host configuration with volume mounts
