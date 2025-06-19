@@ -56,11 +56,32 @@ make install
 - Uses golangci-lint with standard Go linters
 - Standard library preferred over external dependencies where possible
 
+## DevContainer CLI Compatibility
+
+`devgo` aims to provide compatibility with the official devcontainer-cli commands and API. The following commands will be implemented:
+
+### Core Commands (Priority 1)
+- `devgo up` - Create and run dev container (equivalent to `devcontainer up`)
+- `devgo build [path]` - Build a dev container image
+- `devgo exec <cmd> [args...]` - Execute command in running container
+- `devgo stop` - Stop containers
+- `devgo down` - Stop and delete containers
+
+### Extended Commands (Priority 2)
+- `devgo run-user-commands` - Run user commands in container
+- `devgo read-configuration` - Output current workspace configuration
+
+### Global Options
+- `--help` - Show help
+- `--version` - Show version number
+- `--workspace-folder <path>` - Specify project directory (used across commands)
+
 ## Current Implementation Status
 
 - ✅ Basic CLI structure with flag parsing
 - ✅ devcontainer.json discovery logic
 - ✅ GitHub Actions CI/CD pipeline
 - ✅ devcontainer.json parser with comprehensive test coverage
+- 🚧 DevContainer CLI compatibility layer (planned)
 - 🚧 Docker container runner (pending)
 - 🚧 Integration tests (pending)
