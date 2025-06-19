@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/client"
 	"github.com/garaemon/devgo/pkg/devcontainer"
 )
 
@@ -21,17 +24,24 @@ type DockerRunArgs struct {
 
 // DockerClient interface for Docker operations
 type DockerClient interface {
-	ContainerExists(name string) bool
-	IsContainerRunning(name string) bool
-	StartExistingContainer(name string) error
-	CreateAndStartContainer(args DockerRunArgs) error
+	ContainerExists(ctx context.Context, name string) (bool, error)
+	IsContainerRunning(ctx context.Context, name string) (bool, error)
+	StartExistingContainer(ctx context.Context, name string) error
+	CreateAndStartContainer(ctx context.Context, args DockerRunArgs) error
+	Close() error
 }
 
-// realDockerClient implements DockerClient using actual docker commands
-type realDockerClient struct{}
+// realDockerClient implements DockerClient using Docker SDK
+type realDockerClient struct {
+	client *client.Client
+}
 
-func newRealDockerClient() DockerClient {
-	return &realDockerClient{}
+func newRealDockerClient() (DockerClient, error) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Docker client: %w", err)
+	}
+	return &realDockerClient{client: cli}, nil
 }
 
 func runUpCommand(args []string) error {
@@ -48,9 +58,18 @@ func runUpCommand(args []string) error {
 	}
 
 	containerName := determineContainerName(devContainer, workspaceDir)
-	dockerClient := newRealDockerClient()
+	dockerClient, err := newRealDockerClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client: %w", err)
+	}
+	defer func() {
+		if closeErr := dockerClient.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+		}
+	}()
 	
-	return startContainerWithDocker(devContainer, containerName, workspaceDir, dockerClient)
+	ctx := context.Background()
+	return startContainerWithDocker(ctx, devContainer, containerName, workspaceDir, dockerClient)
 }
 
 func determineWorkspaceFolder() string {
@@ -71,7 +90,7 @@ func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDi
 	return fmt.Sprintf("devgo-%s", filepath.Base(workspaceDir))
 }
 
-func startContainerWithDocker(devContainer *devcontainer.DevContainer, containerName, workspaceDir string, dockerClient DockerClient) error {
+func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string, dockerClient DockerClient) error {
 	if !devContainer.HasImage() {
 		return fmt.Errorf("devcontainer must specify an image")
 	}
@@ -82,12 +101,21 @@ func startContainerWithDocker(devContainer *devcontainer.DevContainer, container
 	// We should consider adding a --container-name option for command-line convenience.
 
 	// Check if container already exists
-	if dockerClient.ContainerExists(containerName) {
-		if dockerClient.IsContainerRunning(containerName) {
+	exists, err := dockerClient.ContainerExists(ctx, containerName)
+	if err != nil {
+		return fmt.Errorf("failed to check if container exists: %w", err)
+	}
+
+	if exists {
+		running, err := dockerClient.IsContainerRunning(ctx, containerName)
+		if err != nil {
+			return fmt.Errorf("failed to check if container is running: %w", err)
+		}
+		if running {
 			return fmt.Errorf("container '%s' is already running", containerName)
 		}
 		fmt.Printf("Container '%s' exists but is stopped, starting it\n", containerName)
-		return dockerClient.StartExistingContainer(containerName)
+		return dockerClient.StartExistingContainer(ctx, containerName)
 	}
 
 	fmt.Printf("Creating and starting container '%s' with image '%s'\n", containerName, devContainer.Image)
@@ -100,59 +128,100 @@ func startContainerWithDocker(devContainer *devcontainer.DevContainer, container
 		Env:             devContainer.ContainerEnv,
 	}
 
-	return dockerClient.CreateAndStartContainer(dockerArgs)
+	return dockerClient.CreateAndStartContainer(ctx, dockerArgs)
 }
 
 // realDockerClient methods
-func (r *realDockerClient) ContainerExists(containerName string) bool {
-	cmd := exec.Command("docker", "ps", "-a", "--filter", fmt.Sprintf("name=^%s$", containerName), "--format", "{{.Names}}")
-	output, err := cmd.Output()
+func (r *realDockerClient) ContainerExists(ctx context.Context, containerName string) (bool, error) {
+	filter := filters.NewArgs()
+	filter.Add("name", containerName)
+	
+	containers, err := r.client.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: filter,
+	})
 	if err != nil {
-		return false
+		return false, fmt.Errorf("failed to list containers: %w", err)
 	}
-	return strings.TrimSpace(string(output)) == containerName
+	
+	for _, c := range containers {
+		for _, name := range c.Names {
+			if strings.TrimPrefix(name, "/") == containerName {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
-func (r *realDockerClient) IsContainerRunning(containerName string) bool {
-	cmd := exec.Command("docker", "ps", "--filter", fmt.Sprintf("name=^%s$", containerName), "--format", "{{.Names}}")
-	output, err := cmd.Output()
+func (r *realDockerClient) IsContainerRunning(ctx context.Context, containerName string) (bool, error) {
+	filter := filters.NewArgs()
+	filter.Add("name", containerName)
+	filter.Add("status", "running")
+	
+	containers, err := r.client.ContainerList(ctx, container.ListOptions{
+		Filters: filter,
+	})
 	if err != nil {
-		return false
+		return false, fmt.Errorf("failed to list running containers: %w", err)
 	}
-	return strings.TrimSpace(string(output)) == containerName
+	
+	for _, c := range containers {
+		for _, name := range c.Names {
+			if strings.TrimPrefix(name, "/") == containerName {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
-func (r *realDockerClient) StartExistingContainer(containerName string) error {
-	cmd := exec.Command("docker", "start", containerName)
-	output, err := cmd.CombinedOutput()
+func (r *realDockerClient) StartExistingContainer(ctx context.Context, containerName string) error {
+	err := r.client.ContainerStart(ctx, containerName, container.StartOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to start existing container: %w\nOutput: %s", err, string(output))
+		return fmt.Errorf("failed to start existing container: %w", err)
 	}
 	fmt.Printf("Container '%s' started successfully\n", containerName)
 	return nil
 }
 
-func (r *realDockerClient) CreateAndStartContainer(args DockerRunArgs) error {
-	dockerArgs := []string{
-		"run", "-d",
-		"--name", args.Name,
-		"-v", fmt.Sprintf("%s:%s", args.WorkspaceDir, args.WorkspaceFolder),
-	}
-
+func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args DockerRunArgs) error {
+	// Prepare environment variables
+	var env []string
 	if args.Env != nil {
 		for key, value := range args.Env {
-			dockerArgs = append(dockerArgs, "-e", fmt.Sprintf("%s=%s", key, value))
+			env = append(env, fmt.Sprintf("%s=%s", key, value))
 		}
 	}
 
-	dockerArgs = append(dockerArgs, args.Image, "sleep", "infinity")
+	// Create container configuration
+	config := &container.Config{
+		Image: args.Image,
+		Cmd:   []string{"sleep", "infinity"},
+		Env:   env,
+	}
 
-	cmd := exec.Command("docker", dockerArgs...)
-	output, err := cmd.CombinedOutput()
+	// Create host configuration with volume mounts
+	hostConfig := &container.HostConfig{
+		Binds: []string{fmt.Sprintf("%s:%s", args.WorkspaceDir, args.WorkspaceFolder)},
+	}
+
+	// Create the container
+	resp, err := r.client.ContainerCreate(ctx, config, hostConfig, nil, nil, args.Name)
 	if err != nil {
-		return fmt.Errorf("failed to start container: %w\nOutput: %s", err, string(output))
+		return fmt.Errorf("failed to create container: %w", err)
+	}
+
+	// Start the container
+	err = r.client.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to start container: %w", err)
 	}
 
 	fmt.Printf("Container '%s' started successfully\n", args.Name)
 	return nil
+}
+
+func (r *realDockerClient) Close() error {
+	return r.client.Close()
 }

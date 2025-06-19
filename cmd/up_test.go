@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -27,22 +28,22 @@ func newMockDockerClient() *mockDockerClient {
 	}
 }
 
-func (m *mockDockerClient) ContainerExists(name string) bool {
+func (m *mockDockerClient) ContainerExists(ctx context.Context, name string) (bool, error) {
 	if m.existsError != nil {
-		return false
+		return false, m.existsError
 	}
 	_, exists := m.containers[name]
-	return exists
+	return exists, nil
 }
 
-func (m *mockDockerClient) IsContainerRunning(name string) bool {
+func (m *mockDockerClient) IsContainerRunning(ctx context.Context, name string) (bool, error) {
 	if m.isRunningError != nil {
-		return false
+		return false, m.isRunningError
 	}
-	return m.containers[name]
+	return m.containers[name], nil
 }
 
-func (m *mockDockerClient) StartExistingContainer(name string) error {
+func (m *mockDockerClient) StartExistingContainer(ctx context.Context, name string) error {
 	if m.startError != nil {
 		return m.startError
 	}
@@ -53,12 +54,16 @@ func (m *mockDockerClient) StartExistingContainer(name string) error {
 	return nil
 }
 
-func (m *mockDockerClient) CreateAndStartContainer(args DockerRunArgs) error {
+func (m *mockDockerClient) CreateAndStartContainer(ctx context.Context, args DockerRunArgs) error {
 	if m.createError != nil {
 		return m.createError
 	}
 	m.containers[args.Name] = true
 	m.createdContainers = append(m.createdContainers, args)
+	return nil
+}
+
+func (m *mockDockerClient) Close() error {
 	return nil
 }
 
@@ -139,7 +144,8 @@ func TestRunUpCommand(t *testing.T) {
 			}
 
 			// Test the function
-			err := startContainerWithDocker(devContainer, "test-container", "/test/workspace", mockDocker)
+			ctx := context.Background()
+			err := startContainerWithDocker(ctx, devContainer, "test-container", "/test/workspace", mockDocker)
 
 			if tt.expectError {
 				if err == nil {
