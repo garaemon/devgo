@@ -53,6 +53,8 @@ func Execute() error {
 		return runStopCommand(commandArgs)
 	case "down":
 		return runDownCommand(commandArgs)
+	case "list":
+		return runListCommand(commandArgs)
 	case "run-user-commands":
 		return runUserCommandsCommand(commandArgs)
 	case "read-configuration":
@@ -74,6 +76,7 @@ Commands:
   exec <cmd> [args...]    Execute command in running container
   stop                    Stop containers
   down                    Stop and delete containers
+  list                    List all devgo containers
   run-user-commands       Run user commands in container
   read-configuration      Output current workspace configuration
 
