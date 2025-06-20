@@ -183,11 +183,11 @@ func TestDetermineWorkspaceFolder(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Save original value
-			originalWorkspaceFolder := *workspaceFolder
-			defer func() { *workspaceFolder = originalWorkspaceFolder }()
+			originalWorkspaceFolder := workspaceFolder
+			defer func() { workspaceFolder = originalWorkspaceFolder }()
 
 			// Set test value
-			*workspaceFolder = tt.workspaceFlag
+			workspaceFolder = tt.workspaceFlag
 
 			result := determineWorkspaceFolder()
 			if tt.workspaceFlag != "" && result != tt.expectedResult {
@@ -231,11 +231,11 @@ func TestDetermineContainerName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Save original value
-			originalContainerName := *containerName
-			defer func() { *containerName = originalContainerName }()
+			originalContainerName := containerName
+			defer func() { containerName = originalContainerName }()
 
 			// Set test value
-			*containerName = tt.containerNameFlag
+			containerName = tt.containerNameFlag
 
 			devContainer := &devcontainer.DevContainer{
 				Name: tt.devContainerName,

@@ -74,16 +74,16 @@ func runUpCommand(args []string) error {
 }
 
 func determineWorkspaceFolder() string {
-	if *workspaceFolder != "" {
-		return *workspaceFolder
+	if workspaceFolder != "" {
+		return workspaceFolder
 	}
 	cwd, _ := os.Getwd()
 	return cwd
 }
 
 func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDir string) string {
-	if *containerName != "" {
-		return *containerName
+	if containerName != "" {
+		return containerName
 	}
 	if devContainer.Name != "" {
 		return devContainer.Name
