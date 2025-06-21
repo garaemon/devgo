@@ -249,4 +249,117 @@ func TestDetermineContainerName(t *testing.T) {
 	}
 }
 
-// Test helper functions are now using the actual startContainerWithDocker function
+func TestContainerExists(t *testing.T) {
+	tests := []struct {
+		name           string
+		containerName  string
+		setupMock      func(*mockDockerClient)
+		expectedResult bool
+		expectError    bool
+	}{
+		{
+			name:          "container exists",
+			containerName: "test-container",
+			setupMock: func(m *mockDockerClient) {
+				m.addContainer("test-container", false)
+			},
+			expectedResult: true,
+			expectError:    false,
+		},
+		{
+			name:          "container does not exist",
+			containerName: "non-existent-container",
+			setupMock: func(m *mockDockerClient) {
+				m.addContainer("other-container", false)
+			},
+			expectedResult: false,
+			expectError:    false,
+		},
+		{
+			name:          "empty container name",
+			containerName: "",
+			setupMock: func(m *mockDockerClient) {
+				m.addContainer("test-container", false)
+			},
+			expectedResult: false,
+			expectError:    false,
+		},
+		{
+			name:          "container exists and is running",
+			containerName: "running-container",
+			setupMock: func(m *mockDockerClient) {
+				m.addContainer("running-container", true)
+			},
+			expectedResult: true,
+			expectError:    false,
+		},
+		{
+			name:          "docker client error",
+			containerName: "test-container",
+			setupMock: func(m *mockDockerClient) {
+				m.existsError = fmt.Errorf("docker daemon not available")
+			},
+			expectedResult: false,
+			expectError:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockDocker := newMockDockerClient()
+			tt.setupMock(mockDocker)
+
+			ctx := context.Background()
+			result, err := mockDocker.ContainerExists(ctx, tt.containerName)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+
+			if result != tt.expectedResult {
+				t.Errorf("expected %v but got %v", tt.expectedResult, result)
+			}
+		})
+	}
+}
+
+func TestMockDockerClientContainerExists(t *testing.T) {
+	mockDocker := newMockDockerClient()
+	ctx := context.Background()
+
+	// Test with no containers
+	exists, err := mockDocker.ContainerExists(ctx, "test")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if exists {
+		t.Error("expected false for non-existent container")
+	}
+
+	// Add a container and test
+	mockDocker.addContainer("test-container", false)
+	exists, err = mockDocker.ContainerExists(ctx, "test-container")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Error("expected true for existing container")
+	}
+
+	// Test with different container name
+	exists, err = mockDocker.ContainerExists(ctx, "different-container")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if exists {
+		t.Error("expected false for different container name")
+	}
+}
