@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/network"
 	"github.com/garaemon/devgo/pkg/devcontainer"
+	"github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // Note: DockerClient interface and DockerRunArgs are defined in up.go
@@ -253,17 +252,25 @@ func TestDetermineContainerName(t *testing.T) {
 	}
 }
 
-// mockDockerAPIClient implements the Docker API client interface for testing
+// mockDockerAPIClient implements the dockerAPIClient interface for testing
 type mockDockerAPIClient struct {
-	containers    []types.Container
+	containers    []container.Summary
 	listError     error
 }
 
-func (m *mockDockerAPIClient) ContainerList(ctx context.Context, options container.ListOptions) ([]types.Container, error) {
+func (m *mockDockerAPIClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
 	if m.listError != nil {
 		return nil, m.listError
 	}
 	return m.containers, nil
+}
+
+func (m *mockDockerAPIClient) ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error {
+	return nil
+}
+
+func (m *mockDockerAPIClient) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *v1.Platform, containerName string) (container.CreateResponse, error) {
+	return container.CreateResponse{}, nil
 }
 
 func (m *mockDockerAPIClient) Close() error {
@@ -282,7 +289,7 @@ func TestRealDockerClientContainerExists(t *testing.T) {
 			name:          "container exists with exact name match",
 			containerName: "test-container",
 			setupMock: func(m *mockDockerAPIClient) {
-				m.containers = []types.Container{
+				m.containers = []container.Summary{
 					{
 						Names: []string{"/test-container"},
 					},
@@ -295,7 +302,7 @@ func TestRealDockerClientContainerExists(t *testing.T) {
 			name:          "container exists with multiple names",
 			containerName: "test-container",
 			setupMock: func(m *mockDockerAPIClient) {
-				m.containers = []types.Container{
+				m.containers = []container.Summary{
 					{
 						Names: []string{"/other-name", "/test-container"},
 					},
@@ -308,7 +315,7 @@ func TestRealDockerClientContainerExists(t *testing.T) {
 			name:          "container does not exist",
 			containerName: "non-existent-container",
 			setupMock: func(m *mockDockerAPIClient) {
-				m.containers = []types.Container{
+				m.containers = []container.Summary{
 					{
 						Names: []string{"/other-container"},
 					},
@@ -321,7 +328,7 @@ func TestRealDockerClientContainerExists(t *testing.T) {
 			name:          "no containers exist",
 			containerName: "test-container",
 			setupMock: func(m *mockDockerAPIClient) {
-				m.containers = []types.Container{}
+				m.containers = []container.Summary{}
 			},
 			expectedResult: false,
 			expectError:    false,
@@ -330,7 +337,7 @@ func TestRealDockerClientContainerExists(t *testing.T) {
 			name:          "empty container name",
 			containerName: "",
 			setupMock: func(m *mockDockerAPIClient) {
-				m.containers = []types.Container{
+				m.containers = []container.Summary{
 					{
 						Names: []string{"/test-container"},
 					},
@@ -355,39 +362,31 @@ func TestRealDockerClientContainerExists(t *testing.T) {
 			mockAPI := &mockDockerAPIClient{}
 			tt.setupMock(mockAPI)
 
-			// Create a factory that returns an error since we can't mock client.Client easily
-			// Instead, we'll test the ContainerExists logic by simulating it
-			ctx := context.Background()
-			
-			// Simulate the exact logic from realDockerClient.ContainerExists
-			containers, err := mockAPI.ContainerList(ctx, container.ListOptions{
-				All:     true,
-				Filters: filters.NewArgs(), // We don't actually filter by name in the mock
-			})
-			
-			var result bool
+			// Create a factory that returns our mock API client
+			factory := func() (dockerAPIClient, error) {
+				return mockAPI, nil
+			}
+
+			// Create realDockerClient with our mock factory
+			dockerClient, err := newRealDockerClientWithFactory(factory)
 			if err != nil {
-				if !tt.expectError {
-					t.Errorf("unexpected error: %v", err)
+				t.Fatalf("failed to create docker client: %v", err)
+			}
+			defer dockerClient.Close()
+
+			// Actually call the ContainerExists method
+			ctx := context.Background()
+			result, err := dockerClient.ContainerExists(ctx, tt.containerName)
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error but got none")
 				}
 				return
 			}
-			
-			// Apply the name matching logic from realDockerClient.ContainerExists
-			for _, c := range containers {
-				for _, name := range c.Names {
-					if strings.TrimPrefix(name, "/") == tt.containerName {
-						result = true
-						break
-					}
-				}
-				if result {
-					break
-				}
-			}
 
-			if tt.expectError && err == nil {
-				t.Error("expected error but got none")
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
 				return
 			}
 
