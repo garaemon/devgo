@@ -3,12 +3,14 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/garaemon/devgo/pkg/constants"
@@ -31,6 +33,8 @@ type DockerClient interface {
 	IsContainerRunning(ctx context.Context, name string) (bool, error)
 	StartExistingContainer(ctx context.Context, name string) error
 	CreateAndStartContainer(ctx context.Context, args DockerRunArgs) error
+	ImageExists(ctx context.Context, imageName string) (bool, error)
+	PullImage(ctx context.Context, imageName string) error
 	Close() error
 }
 
@@ -39,6 +43,8 @@ type dockerAPIClient interface {
 	ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
 	ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error
 	ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *v1.Platform, containerName string) (container.CreateResponse, error)
+	ImageList(ctx context.Context, options image.ListOptions) ([]image.Summary, error)
+	ImagePull(ctx context.Context, refStr string, options image.PullOptions) (io.ReadCloser, error)
 	Close() error
 }
 
@@ -122,6 +128,29 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 	// The official devcontainer-cli doesn't have a direct --name option for the up command,
 	// but supports container naming through runArgs in devcontainer.json.
 	// We should consider adding a --container-name option for command-line convenience.
+
+	// Check if we need to pull the image
+	shouldPullImage := pull
+	if !shouldPullImage {
+		// Check if image exists locally
+		imageExists, err := dockerClient.ImageExists(ctx, devContainer.Image)
+		if err != nil {
+			return fmt.Errorf("failed to check if image exists: %w", err)
+		}
+		shouldPullImage = !imageExists
+	}
+
+	// Pull image if needed
+	if shouldPullImage {
+		if pull {
+			fmt.Printf("Pulling image '%s'\n", devContainer.Image)
+		} else {
+			fmt.Printf("Image '%s' not found locally, pulling...\n", devContainer.Image)
+		}
+		if err := dockerClient.PullImage(ctx, devContainer.Image); err != nil {
+			return fmt.Errorf("failed to pull image '%s': %w", devContainer.Image, err)
+		}
+	}
 
 	// Check if container already exists
 	exists, err := dockerClient.ContainerExists(ctx, containerName)
@@ -248,6 +277,43 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 	}
 
 	fmt.Printf("Container '%s' started successfully\n", args.Name)
+	return nil
+}
+
+func (r *realDockerClient) ImageExists(ctx context.Context, imageName string) (bool, error) {
+	images, err := r.client.ImageList(ctx, image.ListOptions{})
+	if err != nil {
+		return false, fmt.Errorf("failed to list images: %w", err)
+	}
+
+	for _, img := range images {
+		for _, tag := range img.RepoTags {
+			if tag == imageName {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func (r *realDockerClient) PullImage(ctx context.Context, imageName string) error {
+	resp, err := r.client.ImagePull(ctx, imageName, image.PullOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to pull image: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close pull response: %v\n", closeErr)
+		}
+	}()
+
+	// Read the response to ensure the pull completes
+	_, err = io.Copy(io.Discard, resp)
+	if err != nil {
+		return fmt.Errorf("failed to read pull response: %w", err)
+	}
+
+	fmt.Printf("Image '%s' pulled successfully\n", imageName)
 	return nil
 }
 
