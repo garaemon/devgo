@@ -142,7 +142,11 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 
 	// Pull image if needed
 	if shouldPullImage {
-		fmt.Printf("Pulling image '%s'\n", devContainer.Image)
+		if pull {
+			fmt.Printf("Pulling image '%s'\n", devContainer.Image)
+		} else {
+			fmt.Printf("Image '%s' not found locally, pulling...\n", devContainer.Image)
+		}
 		if err := dockerClient.PullImage(ctx, devContainer.Image); err != nil {
 			return fmt.Errorf("failed to pull image '%s': %w", devContainer.Image, err)
 		}
