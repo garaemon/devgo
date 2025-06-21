@@ -396,3 +396,141 @@ func TestRealDockerClientContainerExists(t *testing.T) {
 		})
 	}
 }
+
+func TestRealDockerClientIsContainerRunning(t *testing.T) {
+	tests := []struct {
+		name           string
+		containerName  string
+		setupMock      func(*mockDockerAPIClient)
+		expectedResult bool
+		expectError    bool
+	}{
+		{
+			name:          "container is running",
+			containerName: "test-container",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.containers = []container.Summary{
+					{
+						Names:  []string{"/test-container"},
+						State:  "running",
+						Status: "Up 5 minutes",
+					},
+				}
+			},
+			expectedResult: true,
+			expectError:    false,
+		},
+		{
+			name:          "container exists but not running",
+			containerName: "test-container",
+			setupMock: func(m *mockDockerAPIClient) {
+				// No containers returned because status filter is "running"
+				m.containers = []container.Summary{}
+			},
+			expectedResult: false,
+			expectError:    false,
+		},
+		{
+			name:          "container with multiple names is running",
+			containerName: "test-container",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.containers = []container.Summary{
+					{
+						Names:  []string{"/other-name", "/test-container"},
+						State:  "running",
+						Status: "Up 10 minutes",
+					},
+				}
+			},
+			expectedResult: true,
+			expectError:    false,
+		},
+		{
+			name:          "no containers exist",
+			containerName: "test-container",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.containers = []container.Summary{}
+			},
+			expectedResult: false,
+			expectError:    false,
+		},
+		{
+			name:          "empty container name",
+			containerName: "",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.containers = []container.Summary{
+					{
+						Names:  []string{"/test-container"},
+						State:  "running",
+						Status: "Up 1 hour",
+					},
+				}
+			},
+			expectedResult: false,
+			expectError:    false,
+		},
+		{
+			name:          "different container running",
+			containerName: "target-container",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.containers = []container.Summary{
+					{
+						Names:  []string{"/other-container"},
+						State:  "running",
+						Status: "Up 30 seconds",
+					},
+				}
+			},
+			expectedResult: false,
+			expectError:    false,
+		},
+		{
+			name:          "docker api error",
+			containerName: "test-container",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.listError = fmt.Errorf("docker daemon not available")
+			},
+			expectedResult: false,
+			expectError:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockAPI := &mockDockerAPIClient{}
+			tt.setupMock(mockAPI)
+
+			// Create a factory that returns our mock API client
+			factory := func() (dockerAPIClient, error) {
+				return mockAPI, nil
+			}
+
+			// Create realDockerClient with our mock factory
+			dockerClient, err := newRealDockerClientWithFactory(factory)
+			if err != nil {
+				t.Fatalf("failed to create docker client: %v", err)
+			}
+			defer dockerClient.Close()
+
+			// Actually call the IsContainerRunning method
+			ctx := context.Background()
+			result, err := dockerClient.IsContainerRunning(ctx, tt.containerName)
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+
+			if result != tt.expectedResult {
+				t.Errorf("expected %v but got %v", tt.expectedResult, result)
+			}
+		})
+	}
+}
