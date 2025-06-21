@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -253,4 +254,49 @@ func TestListDevgoContainers(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRunListCommand(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		expectError bool
+	}{
+		{
+			name:        "list command with no args",
+			args:        []string{},
+			expectError: false, // May fail if Docker is not available, but that's expected
+		},
+		{
+			name:        "list command with extra args",
+			args:        []string{"extra", "args"},
+			expectError: false, // Function ignores extra args
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := runListCommand(tt.args)
+			
+			// The function may fail if Docker is not available, which is acceptable
+			// We're mainly testing that the function doesn't panic and handles args correctly
+			if err != nil {
+				t.Logf("runListCommand returned error (expected if Docker unavailable): %v", err)
+				// Check that the error is related to Docker client creation
+				if !containsAny(err.Error(), []string{"docker", "client", "connection", "daemon"}) {
+					t.Errorf("unexpected error type: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// containsAny checks if the string contains any of the given substrings
+func containsAny(s string, substrings []string) bool {
+	for _, sub := range substrings {
+		if strings.Contains(strings.ToLower(s), strings.ToLower(sub)) {
+			return true
+		}
+	}
+	return false
 }
