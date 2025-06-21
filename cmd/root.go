@@ -16,6 +16,7 @@ var (
 	containerName   string
 	imageName       string
 	push            bool
+	pull            bool
 	verbose         bool
 	showHelp        bool
 	showVersion     bool
@@ -49,6 +50,8 @@ func parseAllFlags(args []string) []string {
 			forceBuild = true
 		} else if arg == "--push" {
 			push = true
+		} else if arg == "--pull" {
+			pull = true
 		} else {
 			nonFlagArgs = append(nonFlagArgs, arg)
 		}
@@ -129,6 +132,8 @@ Flags:
         Override container name
   --push
         Publish the built image
+  --pull
+        Force pull image before starting container
   --verbose
         Enable verbose output
   --version

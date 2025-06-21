@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/garaemon/devgo/pkg/devcontainer"
 	"github.com/opencontainers/image-spec/specs-go/v1"
@@ -17,17 +20,23 @@ import (
 // mockDockerClient implements DockerClient for testing
 type mockDockerClient struct {
 	containers        map[string]bool // name -> isRunning
+	images            map[string]bool // imageName -> exists
 	createError       error
 	startError        error
 	existsError       error
 	isRunningError    error
+	imageExistsError  error
+	pullImageError    error
 	createdContainers []DockerRunArgs
+	pulledImages      []string
 }
 
 func newMockDockerClient() *mockDockerClient {
 	return &mockDockerClient{
 		containers:        make(map[string]bool),
+		images:            make(map[string]bool),
 		createdContainers: make([]DockerRunArgs, 0),
+		pulledImages:      make([]string, 0),
 	}
 }
 
@@ -66,6 +75,22 @@ func (m *mockDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 	return nil
 }
 
+func (m *mockDockerClient) ImageExists(ctx context.Context, imageName string) (bool, error) {
+	if m.imageExistsError != nil {
+		return false, m.imageExistsError
+	}
+	return m.images[imageName], nil
+}
+
+func (m *mockDockerClient) PullImage(ctx context.Context, imageName string) error {
+	if m.pullImageError != nil {
+		return m.pullImageError
+	}
+	m.pulledImages = append(m.pulledImages, imageName)
+	m.images[imageName] = true
+	return nil
+}
+
 func (m *mockDockerClient) Close() error {
 	return nil
 }
@@ -81,6 +106,14 @@ func (m *mockDockerClient) setCreateError(err error) {
 
 func (m *mockDockerClient) setStartError(err error) {
 	m.startError = err
+}
+
+func (m *mockDockerClient) addImage(imageName string) {
+	m.images[imageName] = true
+}
+
+func (m *mockDockerClient) setPullImageError(err error) {
+	m.pullImageError = err
 }
 
 func TestRunUpCommand(t *testing.T) {
@@ -255,7 +288,9 @@ func TestDetermineContainerName(t *testing.T) {
 // mockDockerAPIClient implements the dockerAPIClient interface for testing
 type mockDockerAPIClient struct {
 	containers    []container.Summary
+	images        []image.Summary
 	listError     error
+	imageListError error
 }
 
 func (m *mockDockerAPIClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
@@ -271,6 +306,18 @@ func (m *mockDockerAPIClient) ContainerStart(ctx context.Context, containerID st
 
 func (m *mockDockerAPIClient) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *v1.Platform, containerName string) (container.CreateResponse, error) {
 	return container.CreateResponse{}, nil
+}
+
+func (m *mockDockerAPIClient) ImageList(ctx context.Context, options image.ListOptions) ([]image.Summary, error) {
+	if m.imageListError != nil {
+		return nil, m.imageListError
+	}
+	return m.images, nil
+}
+
+func (m *mockDockerAPIClient) ImagePull(ctx context.Context, refStr string, options image.PullOptions) (io.ReadCloser, error) {
+	// Return a mock reader that can be closed
+	return io.NopCloser(strings.NewReader("")), nil
 }
 
 func (m *mockDockerAPIClient) Close() error {
