@@ -88,6 +88,8 @@ func Execute() error {
 		return runBuildCommand(commandArgs)
 	case "exec":
 		return runExecCommand(commandArgs)
+	case "shell":
+		return runShellCommand(commandArgs)
 	case "stop":
 		return runStopCommand(commandArgs)
 	case "down":
@@ -113,6 +115,7 @@ Commands:
   up                       Create and run dev container
   build [path]            Build a dev container image
   exec <cmd> [args...]    Execute command in running container
+  shell                   Start interactive bash shell in container
   stop                    Stop containers
   down                    Stop and delete containers
   list                    List all devgo containers
@@ -145,6 +148,7 @@ Examples:
   devgo up --workspace-folder .
   devgo build --image-name myapp:latest
   devgo exec bash
+  devgo shell
   devgo stop
 `)
 }
