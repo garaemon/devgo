@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 	"github.com/garaemon/devgo/pkg/devcontainer"
+	"github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // Note: DockerClient interface and DockerRunArgs are defined in up.go
@@ -249,4 +252,147 @@ func TestDetermineContainerName(t *testing.T) {
 	}
 }
 
-// Test helper functions are now using the actual startContainerWithDocker function
+// mockDockerAPIClient implements the dockerAPIClient interface for testing
+type mockDockerAPIClient struct {
+	containers    []container.Summary
+	listError     error
+}
+
+func (m *mockDockerAPIClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
+	if m.listError != nil {
+		return nil, m.listError
+	}
+	return m.containers, nil
+}
+
+func (m *mockDockerAPIClient) ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error {
+	return nil
+}
+
+func (m *mockDockerAPIClient) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *v1.Platform, containerName string) (container.CreateResponse, error) {
+	return container.CreateResponse{}, nil
+}
+
+func (m *mockDockerAPIClient) Close() error {
+	return nil
+}
+
+func TestRealDockerClientContainerExists(t *testing.T) {
+	tests := []struct {
+		name           string
+		containerName  string
+		setupMock      func(*mockDockerAPIClient)
+		expectedResult bool
+		expectError    bool
+	}{
+		{
+			name:          "container exists with exact name match",
+			containerName: "test-container",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.containers = []container.Summary{
+					{
+						Names: []string{"/test-container"},
+					},
+				}
+			},
+			expectedResult: true,
+			expectError:    false,
+		},
+		{
+			name:          "container exists with multiple names",
+			containerName: "test-container",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.containers = []container.Summary{
+					{
+						Names: []string{"/other-name", "/test-container"},
+					},
+				}
+			},
+			expectedResult: true,
+			expectError:    false,
+		},
+		{
+			name:          "container does not exist",
+			containerName: "non-existent-container",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.containers = []container.Summary{
+					{
+						Names: []string{"/other-container"},
+					},
+				}
+			},
+			expectedResult: false,
+			expectError:    false,
+		},
+		{
+			name:          "no containers exist",
+			containerName: "test-container",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.containers = []container.Summary{}
+			},
+			expectedResult: false,
+			expectError:    false,
+		},
+		{
+			name:          "empty container name",
+			containerName: "",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.containers = []container.Summary{
+					{
+						Names: []string{"/test-container"},
+					},
+				}
+			},
+			expectedResult: false,
+			expectError:    false,
+		},
+		{
+			name:          "docker api error",
+			containerName: "test-container",
+			setupMock: func(m *mockDockerAPIClient) {
+				m.listError = fmt.Errorf("docker daemon not available")
+			},
+			expectedResult: false,
+			expectError:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockAPI := &mockDockerAPIClient{}
+			tt.setupMock(mockAPI)
+
+			// Create a factory that returns our mock API client
+			factory := func() (dockerAPIClient, error) {
+				return mockAPI, nil
+			}
+
+			// Create realDockerClient with our mock factory
+			dockerClient, err := newRealDockerClientWithFactory(factory)
+			if err != nil {
+				t.Fatalf("failed to create docker client: %v", err)
+			}
+			defer dockerClient.Close()
+
+			// Actually call the ContainerExists method
+			ctx := context.Background()
+			result, err := dockerClient.ContainerExists(ctx, tt.containerName)
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+
+			if result != tt.expectedResult {
+				t.Errorf("expected %v but got %v", tt.expectedResult, result)
+			}
+		})
+	}
+}

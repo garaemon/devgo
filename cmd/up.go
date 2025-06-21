@@ -9,9 +9,11 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/garaemon/devgo/pkg/constants"
 	"github.com/garaemon/devgo/pkg/devcontainer"
+	"github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // DockerRunArgs represents arguments for docker run command
@@ -32,13 +34,33 @@ type DockerClient interface {
 	Close() error
 }
 
+// dockerAPIClient interface wraps the Docker client methods we use
+type dockerAPIClient interface {
+	ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
+	ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error
+	ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *v1.Platform, containerName string) (container.CreateResponse, error)
+	Close() error
+}
+
+// dockerClientFactory is a function type for creating Docker clients
+type dockerClientFactory func() (dockerAPIClient, error)
+
+// defaultDockerClientFactory creates a real Docker client
+func defaultDockerClientFactory() (dockerAPIClient, error) {
+	return client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+}
+
 // realDockerClient implements DockerClient using Docker SDK
 type realDockerClient struct {
-	client *client.Client
+	client dockerAPIClient
 }
 
 func newRealDockerClient() (DockerClient, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	return newRealDockerClientWithFactory(defaultDockerClientFactory)
+}
+
+func newRealDockerClientWithFactory(factory dockerClientFactory) (DockerClient, error) {
+	cli, err := factory()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
