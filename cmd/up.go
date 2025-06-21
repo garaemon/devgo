@@ -32,13 +32,25 @@ type DockerClient interface {
 	Close() error
 }
 
+// dockerClientFactory is a function type for creating Docker clients
+type dockerClientFactory func() (*client.Client, error)
+
+// defaultDockerClientFactory creates a real Docker client
+func defaultDockerClientFactory() (*client.Client, error) {
+	return client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+}
+
 // realDockerClient implements DockerClient using Docker SDK
 type realDockerClient struct {
 	client *client.Client
 }
 
 func newRealDockerClient() (DockerClient, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	return newRealDockerClientWithFactory(defaultDockerClientFactory)
+}
+
+func newRealDockerClientWithFactory(factory dockerClientFactory) (DockerClient, error) {
+	cli, err := factory()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
