@@ -11,6 +11,14 @@ import (
 	"github.com/garaemon/devgo/pkg/devcontainer"
 )
 
+// DownDockerClient interface for down command Docker operations
+type DownDockerClient interface {
+	ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
+	ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error
+	ContainerRemove(ctx context.Context, containerID string, options container.RemoveOptions) error
+	Close() error
+}
+
 func runDownCommand(args []string) error {
 	workspaceDir := determineWorkspaceFolder()
 	
@@ -40,7 +48,7 @@ func runDownCommand(args []string) error {
 	return stopAndRemoveContainer(ctx, cli, containerName)
 }
 
-func stopAndRemoveContainer(ctx context.Context, cli *client.Client, containerName string) error {
+func stopAndRemoveContainer(ctx context.Context, cli DownDockerClient, containerName string) error {
 	// Check if container exists
 	filter := filters.NewArgs()
 	filter.Add("name", containerName)
