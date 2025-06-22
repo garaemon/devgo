@@ -71,6 +71,9 @@ make install
 - `devgo run-user-commands` - Run user commands in container
 - `devgo read-configuration` - Output current workspace configuration
 
+### Utility Commands (Priority 3)
+- `devgo shell` - Start an interactive shell session in the dev container
+
 ### Global Options
 - `--help` - Show help
 - `--version` - Show version number
