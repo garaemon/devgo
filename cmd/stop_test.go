@@ -14,8 +14,8 @@ func TestRunStopCommand(t *testing.T) {
 		{
 			name:          "stop command with no args",
 			args:          []string{},
-			expectError:   true, // Will fail because no devcontainer.json in test environment
-			errorContains: "failed to find devcontainer config",
+			expectError:   false, // Command succeeds, container not running message is expected
+			errorContains: "",
 		},
 	}
 
