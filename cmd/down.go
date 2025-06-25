@@ -20,12 +20,12 @@ type DownDockerClient interface {
 }
 
 func runDownCommand(args []string) error {
-	workspaceDir := determineWorkspaceFolder()
-	
 	devcontainerPath, err := findDevcontainerConfig("")
 	if err != nil {
 		return fmt.Errorf("failed to find devcontainer config: %w", err)
 	}
+	
+	workspaceDir := determineWorkspaceFolder(devcontainerPath)
 
 	devContainer, err := devcontainer.Parse(devcontainerPath)
 	if err != nil {

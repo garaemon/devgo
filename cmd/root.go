@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	
+	"github.com/garaemon/devgo/pkg/devcontainer"
 	// "github.com/garaemon/devgo/pkg/config"
-	// "github.com/garaemon/devgo/pkg/devcontainer"
 	// "github.com/garaemon/devgo/pkg/docker"
 )
 
@@ -198,4 +199,22 @@ func findDevcontainerConfig(configPath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no devcontainer.json found in current directory or parent directories")
+}
+
+func determineWorkspaceFolder(devcontainerPath string) string {
+	if workspaceFolder != "" {
+		return workspaceFolder
+	}
+	// Use the directory containing the devcontainer.json as the workspace
+	return filepath.Dir(filepath.Dir(devcontainerPath))
+}
+
+func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDir string) string {
+	if containerName != "" {
+		return containerName
+	}
+	if devContainer.Name != "" {
+		return devContainer.Name
+	}
+	return fmt.Sprintf("devgo-%s", filepath.Base(workspaceDir))
 }

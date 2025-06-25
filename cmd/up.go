@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -74,12 +72,12 @@ func newRealDockerClientWithFactory(factory dockerClientFactory) (DockerClient, 
 }
 
 func runUpCommand(args []string) error {
-	workspaceDir := determineWorkspaceFolder()
-	
 	devcontainerPath, err := findDevcontainerConfig("")
 	if err != nil {
 		return fmt.Errorf("failed to find devcontainer config: %w", err)
 	}
+
+	workspaceDir := determineWorkspaceFolder(devcontainerPath)
 
 	devContainer, err := devcontainer.Parse(devcontainerPath)
 	if err != nil {
@@ -101,23 +99,6 @@ func runUpCommand(args []string) error {
 	return startContainerWithDocker(ctx, devContainer, containerName, workspaceDir, dockerClient)
 }
 
-func determineWorkspaceFolder() string {
-	if workspaceFolder != "" {
-		return workspaceFolder
-	}
-	cwd, _ := os.Getwd()
-	return cwd
-}
-
-func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDir string) string {
-	if containerName != "" {
-		return containerName
-	}
-	if devContainer.Name != "" {
-		return devContainer.Name
-	}
-	return fmt.Sprintf("devgo-%s", filepath.Base(workspaceDir))
-}
 
 func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string, dockerClient DockerClient) error {
 	if !devContainer.HasImage() {
