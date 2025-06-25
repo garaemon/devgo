@@ -225,9 +225,20 @@ func TestDetermineWorkspaceFolder(t *testing.T) {
 			// Set test value
 			workspaceFolder = tt.workspaceFlag
 
-			result := determineWorkspaceFolder()
-			if tt.workspaceFlag != "" && result != tt.expectedResult {
-				t.Errorf("expected %s but got %s", tt.expectedResult, result)
+			// Create a mock devcontainer path for testing
+			testDevcontainerPath := "/test/workspace/.devcontainer/devcontainer.json"
+			result := determineWorkspaceFolder(testDevcontainerPath)
+			
+			if tt.workspaceFlag != "" {
+				if result != tt.expectedResult {
+					t.Errorf("expected %s but got %s", tt.expectedResult, result)
+				}
+			} else {
+				// When no workspace flag is provided, should use directory containing devcontainer
+				expected := "/test/workspace"
+				if result != expected {
+					t.Errorf("expected %s but got %s", expected, result)
+				}
 			}
 		})
 	}

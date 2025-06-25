@@ -30,12 +30,12 @@ func runExecCommand(args []string) error {
 		return fmt.Errorf("exec command requires at least one argument")
 	}
 
-	workspaceDir := determineWorkspaceFolder()
-	
 	devcontainerPath, err := findDevcontainerConfig("")
 	if err != nil {
 		return fmt.Errorf("failed to find devcontainer config: %w", err)
 	}
+
+	workspaceDir := determineWorkspaceFolder(devcontainerPath)
 
 	devContainer, err := devcontainer.Parse(devcontainerPath)
 	if err != nil {
