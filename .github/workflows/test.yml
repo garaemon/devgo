@@ -51,6 +51,40 @@ jobs:
     - name: Run basic smoke test
       run: |
         ./devgo --help
+
+  integration:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        go-version: ['1.21', '1.22', '1.23', '1.24']
+        
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+        
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+          
+    - name: Download dependencies
+      run: go mod download
+      
+    - name: Build
+      run: make build
+      
+    - name: Run integration tests
+      run: |
+        cd test/integration
+        go test -v -timeout=300s
         
   lint:
     runs-on: ubuntu-latest
