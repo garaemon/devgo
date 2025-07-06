@@ -3,7 +3,6 @@ module github.com/garaemon/devgo
 go 1.21
 
 require (
-	github.com/docker/docker v28.3.1+incompatible
 	github.com/opencontainers/image-spec v1.1.1
 	golang.org/x/term v0.32.0
 )
@@ -14,6 +13,7 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
+	github.com/docker/docker v28.3.1+incompatible
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect

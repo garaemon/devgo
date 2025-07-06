@@ -18,7 +18,7 @@ func TestDetermineDockerfilePath(t *testing.T) {
 		{
 			name: "dockerfile specified in devcontainer",
 			devContainer: &devcontainer.DevContainer{
-				Build: &devcontainer.Build{
+				Build: &devcontainer.BuildConfig{
 					Dockerfile: "custom.Dockerfile",
 				},
 			},
@@ -28,7 +28,7 @@ func TestDetermineDockerfilePath(t *testing.T) {
 		{
 			name: "absolute dockerfile path",
 			devContainer: &devcontainer.DevContainer{
-				Build: &devcontainer.Build{
+				Build: &devcontainer.BuildConfig{
 					Dockerfile: "/absolute/path/Dockerfile",
 				},
 			},
@@ -38,7 +38,7 @@ func TestDetermineDockerfilePath(t *testing.T) {
 		{
 			name: "default dockerfile",
 			devContainer: &devcontainer.DevContainer{
-				Build: &devcontainer.Build{},
+				Build: &devcontainer.BuildConfig{},
 			},
 			devcontainerPath: "/workspace/.devcontainer/devcontainer.json",
 			expected:         "/workspace/.devcontainer/Dockerfile",
@@ -66,7 +66,7 @@ func TestDetermineBuildContext(t *testing.T) {
 		{
 			name: "context specified in devcontainer",
 			devContainer: &devcontainer.DevContainer{
-				Build: &devcontainer.Build{
+				Build: &devcontainer.BuildConfig{
 					Context: "../",
 				},
 			},
@@ -77,7 +77,7 @@ func TestDetermineBuildContext(t *testing.T) {
 		{
 			name: "absolute context path",
 			devContainer: &devcontainer.DevContainer{
-				Build: &devcontainer.Build{
+				Build: &devcontainer.BuildConfig{
 					Context: "/absolute/path",
 				},
 			},
@@ -88,7 +88,7 @@ func TestDetermineBuildContext(t *testing.T) {
 		{
 			name: "default context",
 			devContainer: &devcontainer.DevContainer{
-				Build: &devcontainer.Build{},
+				Build: &devcontainer.BuildConfig{},
 			},
 			workspaceDir:     "/workspace",
 			devcontainerPath: "/workspace/.devcontainer/devcontainer.json",

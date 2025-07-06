@@ -4,7 +4,8 @@
       "Bash(make:*)",
       "Bash(go:*)",
       "Bash(gh run list:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(gh workflow:*)"
     ],
     "deny": []
   }
