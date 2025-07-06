@@ -12,7 +12,7 @@ jobs:
     
     strategy:
       matrix:
-        go-version: ['1.21', '1.22', '1.23', '1.24']
+        go-version: ['1.18', '1.19', '1.20', '1.21', '1.22', '1.23', '1.24']
         
     steps:
     - uses: actions/checkout@v4
@@ -57,7 +57,7 @@ jobs:
     
     strategy:
       matrix:
-        go-version: ['1.21', '1.22', '1.23', '1.24']
+        go-version: ['1.18', '1.19', '1.20', '1.21', '1.22', '1.23', '1.24']
         
     steps:
     - uses: actions/checkout@v4
@@ -95,7 +95,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.23
+        go-version: 1.18
         
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v8
