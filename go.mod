@@ -1,6 +1,6 @@
 module github.com/garaemon/devgo
 
-go 1.18
+go 1.21
 
 require (
 	github.com/docker/docker v28.3.1+incompatible
