@@ -161,7 +161,32 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 		Env:             devContainer.ContainerEnv,
 	}
 
-	return dockerClient.CreateAndStartContainer(ctx, dockerArgs)
+	if err := dockerClient.CreateAndStartContainer(ctx, dockerArgs); err != nil {
+		return err
+	}
+
+	return executePostCreateCommand(ctx, devContainer, containerName, workspaceDir)
+}
+
+func executePostCreateCommand(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
+	postCreateArgs := devContainer.GetPostCreateCommandArgs()
+	if len(postCreateArgs) == 0 {
+		return nil
+	}
+
+	fmt.Printf("Running postCreateCommand: %s\n", strings.Join(postCreateArgs, " "))
+
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client for postCreateCommand: %w", err)
+	}
+	defer func() {
+		if closeErr := cli.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+		}
+	}()
+
+	return executeCommandInContainer(ctx, cli, containerName, postCreateArgs, devContainer)
 }
 
 // realDockerClient methods

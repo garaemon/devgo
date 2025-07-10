@@ -254,3 +254,107 @@ func TestGetContainerUser(t *testing.T) {
 		})
 	}
 }
+
+func TestGetPostCreateCommandArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected []string
+	}{
+		{
+			name:     "no post create command",
+			dc:       DevContainer{},
+			expected: nil,
+		},
+		{
+			name: "string post create command",
+			dc: DevContainer{
+				PostCreateCommand: "npm install",
+			},
+			expected: []string{"/bin/sh", "-c", "npm install"},
+		},
+		{
+			name: "array post create command",
+			dc: DevContainer{
+				PostCreateCommand: []interface{}{"npm", "install", "--global", "yarn"},
+			},
+			expected: []string{"npm", "install", "--global", "yarn"},
+		},
+		{
+			name: "mixed array with non-string (should be ignored)",
+			dc: DevContainer{
+				PostCreateCommand: []interface{}{"npm", "install", 123, "yarn"},
+			},
+			expected: []string{"npm", "install", "yarn"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.GetPostCreateCommandArgs()
+			if len(got) != len(tt.expected) {
+				t.Errorf("GetPostCreateCommandArgs() length = %v, want %v", len(got), len(tt.expected))
+				return
+			}
+			for i, arg := range got {
+				if arg != tt.expected[i] {
+					t.Errorf("GetPostCreateCommandArgs()[%d] = %v, want %v", i, arg, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestParseCommand(t *testing.T) {
+	tests := []struct {
+		name     string
+		cmd      interface{}
+		expected []string
+	}{
+		{
+			name:     "nil command",
+			cmd:      nil,
+			expected: nil,
+		},
+		{
+			name:     "string command",
+			cmd:      "echo hello",
+			expected: []string{"/bin/sh", "-c", "echo hello"},
+		},
+		{
+			name:     "array command",
+			cmd:      []interface{}{"echo", "hello", "world"},
+			expected: []string{"echo", "hello", "world"},
+		},
+		{
+			name:     "empty array command",
+			cmd:      []interface{}{},
+			expected: []string{},
+		},
+		{
+			name:     "array with non-string elements",
+			cmd:      []interface{}{"echo", 123, "world"},
+			expected: []string{"echo", "world"},
+		},
+		{
+			name:     "unsupported type",
+			cmd:      123,
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseCommand(tt.cmd)
+			if len(got) != len(tt.expected) {
+				t.Errorf("parseCommand() length = %v, want %v", len(got), len(tt.expected))
+				return
+			}
+			for i, arg := range got {
+				if arg != tt.expected[i] {
+					t.Errorf("parseCommand()[%d] = %v, want %v", i, arg, tt.expected[i])
+				}
+			}
+		})
+	}
+}

@@ -67,3 +67,37 @@ func (dc *DevContainer) GetContainerUser() string {
 	}
 	return "root"
 }
+
+func (dc *DevContainer) GetPostCreateCommandArgs() []string {
+	if dc.PostCreateCommand == nil {
+		return nil
+	}
+	return parseCommand(dc.PostCreateCommand)
+}
+
+func parseCommand(cmd interface{}) []string {
+	if cmd == nil {
+		return nil
+	}
+
+	switch v := cmd.(type) {
+	case string:
+		// String commands are executed through shell to support shell features
+		// like pipes, redirects, variable expansion, and command chaining (&&, ||)
+		// Example: "npm install && npm run build"
+		return []string{"/bin/sh", "-c", v}
+	case []interface{}:
+		// Array commands are executed directly without shell interpretation
+		// for better security and performance when shell features are not needed
+		// Example: ["npm", "install"]
+		var args []string
+		for _, arg := range v {
+			if str, ok := arg.(string); ok {
+				args = append(args, str)
+			}
+		}
+		return args
+	default:
+		return nil
+	}
+}
