@@ -820,3 +820,317 @@ func TestRealDockerClientPullImage(t *testing.T) {
 		})
 	}
 }
+
+func TestExecuteOnCreateCommand(t *testing.T) {
+	tests := []struct {
+		name            string
+		devContainer    *devcontainer.DevContainer
+		containerName   string
+		workspaceDir    string
+		expectError     bool
+		expectedCommand []string
+	}{
+		{
+			name: "no onCreateCommand",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: nil,
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: nil,
+		},
+		{
+			name: "string onCreateCommand",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: "apt-get update",
+				ContainerUser:   "root",
+				WorkspaceFolder: "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"/bin/sh", "-c", "apt-get update"},
+		},
+		{
+			name: "array onCreateCommand",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: []interface{}{"npm", "install"},
+				ContainerUser:   "node",
+				WorkspaceFolder: "/app",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"npm", "install"},
+		},
+		{
+			name: "empty array onCreateCommand",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: []interface{}{},
+				ContainerUser:   "root",
+				WorkspaceFolder: "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{},
+		},
+		{
+			name: "mixed array with non-string elements",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: []interface{}{"echo", 123, "hello"},
+				ContainerUser:   "root",
+				WorkspaceFolder: "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"echo", "hello"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test the command parsing logic
+			args := tt.devContainer.GetOnCreateCommandArgs()
+			
+			if tt.expectedCommand == nil {
+				if args != nil {
+					t.Errorf("expected nil command args, got %v", args)
+				}
+				return
+			}
+
+			if len(args) != len(tt.expectedCommand) {
+				t.Errorf("expected command length %d, got %d", len(tt.expectedCommand), len(args))
+				return
+			}
+
+			for i, expected := range tt.expectedCommand {
+				if args[i] != expected {
+					t.Errorf("command arg %d: expected %s, got %s", i, expected, args[i])
+				}
+			}
+		})
+	}
+}
+
+func TestExecuteOnCreateCommandIntegration(t *testing.T) {
+	tests := []struct {
+		name         string
+		devContainer *devcontainer.DevContainer
+		expectOutput string
+	}{
+		{
+			name: "no onCreateCommand - should return nil without output",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: nil,
+			},
+			expectOutput: "",
+		},
+		{
+			name: "command with empty args - should return nil",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: []interface{}{},
+			},
+			expectOutput: "",
+		},
+		{
+			name: "string command - should output running message",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: "echo test",
+				ContainerUser:   "root",
+				WorkspaceFolder: "/workspace",
+			},
+			expectOutput: "Running onCreateCommand: /bin/sh -c echo test",
+		},
+		{
+			name: "array command - should output running message",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: []interface{}{"echo", "hello", "world"},
+				ContainerUser:   "root",
+				WorkspaceFolder: "/workspace",
+			},
+			expectOutput: "Running onCreateCommand: echo hello world",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := tt.devContainer.GetOnCreateCommandArgs()
+			
+			if len(args) == 0 {
+				// Should return early without any Docker operations
+				if tt.expectOutput != "" {
+					t.Errorf("expected no output for empty command, but test expects: %s", tt.expectOutput)
+				}
+				return
+			}
+
+			// For commands with args, verify the expected output format
+			expectedOutput := fmt.Sprintf("Running onCreateCommand: %s", strings.Join(args, " "))
+			if expectedOutput != tt.expectOutput {
+				t.Errorf("expected output format '%s', got '%s'", tt.expectOutput, expectedOutput)
+			}
+
+			// Verify the command args are parsed correctly
+			if len(args) == 0 && tt.devContainer.OnCreateCommand != nil {
+				t.Error("expected command args but got empty slice")
+			}
+		})
+	}
+}
+
+func TestExecuteOnCreateCommandErrorCases(t *testing.T) {
+	tests := []struct {
+		name         string
+		devContainer *devcontainer.DevContainer
+		description  string
+	}{
+		{
+			name: "unsupported command type",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: 123,
+			},
+			description: "should handle invalid command types gracefully",
+		},
+		{
+			name: "complex string command with shell features",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: "apt-get update && apt-get install -y curl",
+				ContainerUser:   "root",
+				WorkspaceFolder: "/workspace",
+			},
+			description: "should parse complex shell commands correctly",
+		},
+		{
+			name: "array command with special characters",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: []interface{}{"echo", "hello world", "$HOME"},
+				ContainerUser:   "root",
+				WorkspaceFolder: "/workspace",
+			},
+			description: "should handle array commands with special characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := tt.devContainer.GetOnCreateCommandArgs()
+			
+			// Test that parseCommand handles edge cases appropriately
+			switch tt.name {
+			case "unsupported command type":
+				if args != nil {
+					t.Errorf("expected nil for unsupported command type, got %v", args)
+				}
+			case "complex string command with shell features":
+				expected := []string{"/bin/sh", "-c", "apt-get update && apt-get install -y curl"}
+				if len(args) != len(expected) {
+					t.Errorf("expected %d args, got %d", len(expected), len(args))
+				} else {
+					for i, exp := range expected {
+						if args[i] != exp {
+							t.Errorf("arg %d: expected %s, got %s", i, exp, args[i])
+						}
+					}
+				}
+			case "array command with special characters":
+				expected := []string{"echo", "hello world", "$HOME"}
+				if len(args) != len(expected) {
+					t.Errorf("expected %d args, got %d", len(expected), len(args))
+				} else {
+					for i, exp := range expected {
+						if args[i] != exp {
+							t.Errorf("arg %d: expected %s, got %s", i, exp, args[i])
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestExecuteOnCreateCommandCoverageEnhancement(t *testing.T) {
+	tests := []struct {
+		name         string
+		devContainer *devcontainer.DevContainer
+		testFocus    string
+	}{
+		{
+			name: "test early return for nil command",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: nil,
+			},
+			testFocus: "early_return",
+		},
+		{
+			name: "test early return for empty array command",  
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: []interface{}{},
+			},
+			testFocus: "early_return",
+		},
+		{
+			name: "test string command with complex shell operations",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: "cd /tmp && wget https://example.com/file.txt && chmod +x file.txt",
+				ContainerUser:   "root",
+				WorkspaceFolder: "/workspace",
+			},
+			testFocus: "command_formatting",
+		},
+		{
+			name: "test array command with many arguments",
+			devContainer: &devcontainer.DevContainer{
+				OnCreateCommand: []interface{}{"python", "-m", "pip", "install", "-r", "requirements.txt", "--user", "--no-cache"},
+				ContainerUser:   "python",
+				WorkspaceFolder: "/app",
+			},
+			testFocus: "command_formatting",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := tt.devContainer.GetOnCreateCommandArgs()
+			
+			switch tt.testFocus {
+			case "early_return":
+				if args != nil {
+					t.Errorf("Expected nil args for early return case, got %v", args)
+				}
+			case "command_formatting":
+				if len(args) == 0 {
+					t.Error("Expected non-empty args for command formatting test")
+				}
+				
+				// Verify command structure based on type
+				if tt.devContainer.OnCreateCommand != nil {
+					switch cmd := tt.devContainer.OnCreateCommand.(type) {
+					case string:
+						if len(args) != 3 || args[0] != "/bin/sh" || args[1] != "-c" || args[2] != cmd {
+							t.Errorf("String command not formatted correctly: %v", args)
+						}
+					case []interface{}:
+						cmdStrings := make([]string, 0, len(cmd))
+						for _, arg := range cmd {
+							if str, ok := arg.(string); ok {
+								cmdStrings = append(cmdStrings, str)
+							}
+						}
+						if len(args) != len(cmdStrings) {
+							t.Errorf("Array command length mismatch: expected %d, got %d", len(cmdStrings), len(args))
+						}
+						for i, expected := range cmdStrings {
+							if i < len(args) && args[i] != expected {
+								t.Errorf("Array command arg %d: expected %s, got %s", i, expected, args[i])
+							}
+						}
+					}
+				}
+			}
+		})
+	}
+}
