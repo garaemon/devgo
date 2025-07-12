@@ -176,6 +176,10 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 		return err
 	}
 
+	if err := executeUpdateContentCommand(ctx, devContainer, containerName, workspaceDir); err != nil {
+		return err
+	}
+
 	return executePostCreateCommand(ctx, devContainer, containerName, workspaceDir)
 }
 
@@ -198,6 +202,27 @@ func executeOnCreateCommand(ctx context.Context, devContainer *devcontainer.DevC
 	}()
 
 	return executeCommandInContainer(ctx, cli, containerName, onCreateArgs, devContainer)
+}
+
+func executeUpdateContentCommand(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
+	updateContentArgs := devContainer.GetUpdateContentCommandArgs()
+	if len(updateContentArgs) == 0 {
+		return nil
+	}
+
+	fmt.Printf("Running updateContentCommand: %s\n", strings.Join(updateContentArgs, " "))
+
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client for updateContentCommand: %w", err)
+	}
+	defer func() {
+		if closeErr := cli.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+		}
+	}()
+
+	return executeCommandInContainer(ctx, cli, containerName, updateContentArgs, devContainer)
 }
 
 func executePostCreateCommand(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {

@@ -1,0 +1,6 @@
+{
+  "name": "Update Content Command Test",
+  "image": "node:18",
+  "workspaceFolder": "/workspace",
+  "updateContentCommand": "npm update && npm audit fix"
+}

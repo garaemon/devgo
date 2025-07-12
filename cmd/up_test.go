@@ -1214,3 +1214,96 @@ func TestExecuteOnCreateCommandCoverageEnhancement(t *testing.T) {
 		})
 	}
 }
+
+func TestExecuteUpdateContentCommand(t *testing.T) {
+	tests := []struct {
+		name            string
+		devContainer    *devcontainer.DevContainer
+		containerName   string
+		workspaceDir    string
+		expectError     bool
+		expectedCommand []string
+	}{
+		{
+			name: "no updateContentCommand",
+			devContainer: &devcontainer.DevContainer{
+				UpdateContentCommand: nil,
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: nil,
+		},
+		{
+			name: "string updateContentCommand",
+			devContainer: &devcontainer.DevContainer{
+				UpdateContentCommand: "npm update",
+				ContainerUser:        "root",
+				WorkspaceFolder:      "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"/bin/sh", "-c", "npm update"},
+		},
+		{
+			name: "array updateContentCommand",
+			devContainer: &devcontainer.DevContainer{
+				UpdateContentCommand: []interface{}{"pip", "install", "--upgrade", "-r", "requirements.txt"},
+				ContainerUser:        "root",
+				WorkspaceFolder:      "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"pip", "install", "--upgrade", "-r", "requirements.txt"},
+		},
+		{
+			name: "empty array updateContentCommand",
+			devContainer: &devcontainer.DevContainer{
+				UpdateContentCommand: []interface{}{},
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: nil,
+		},
+		{
+			name: "mixed array with non-string elements",
+			devContainer: &devcontainer.DevContainer{
+				UpdateContentCommand: []interface{}{"npm", 123, "update"},
+				ContainerUser:        "root",
+				WorkspaceFolder:      "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"npm", "update"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test the command parsing logic only
+			args := tt.devContainer.GetUpdateContentCommandArgs()
+			
+			if tt.expectedCommand == nil {
+				if args != nil {
+					t.Errorf("expected nil command args, got %v", args)
+				}
+				return
+			}
+
+			if len(args) != len(tt.expectedCommand) {
+				t.Errorf("expected command length %d, got %d", len(tt.expectedCommand), len(args))
+				return
+			}
+
+			for i, expected := range tt.expectedCommand {
+				if args[i] != expected {
+					t.Errorf("command arg %d: expected %s, got %s", i, expected, args[i])
+				}
+			}
+		})
+	}
+}

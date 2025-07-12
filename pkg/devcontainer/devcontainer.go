@@ -27,10 +27,11 @@ type DevContainer struct {
 	ContainerEnv      map[string]string         `json:"containerEnv,omitempty"`
 	ForwardPorts      []interface{}             `json:"forwardPorts,omitempty"`
 	PortsAttributes   map[string]PortAttributes `json:"portsAttributes,omitempty"`
-	InitializeCommand interface{}               `json:"initializeCommand,omitempty"`
-	OnCreateCommand   interface{}               `json:"onCreateCommand,omitempty"`
-	PostCreateCommand interface{}               `json:"postCreateCommand,omitempty"`
-	PostStartCommand  interface{}               `json:"postStartCommand,omitempty"`
+	InitializeCommand   interface{} `json:"initializeCommand,omitempty"`
+	OnCreateCommand     interface{} `json:"onCreateCommand,omitempty"`
+	UpdateContentCommand interface{} `json:"updateContentCommand,omitempty"`
+	PostCreateCommand   interface{} `json:"postCreateCommand,omitempty"`
+	PostStartCommand    interface{} `json:"postStartCommand,omitempty"`
 }
 
 func Parse(filePath string) (*DevContainer, error) {
@@ -81,6 +82,13 @@ func (dc *DevContainer) GetOnCreateCommandArgs() []string {
 		return nil
 	}
 	return parseCommand(dc.OnCreateCommand)
+}
+
+func (dc *DevContainer) GetUpdateContentCommandArgs() []string {
+	if dc.UpdateContentCommand == nil {
+		return nil
+	}
+	return parseCommand(dc.UpdateContentCommand)
 }
 
 func (dc *DevContainer) GetPostCreateCommandArgs() []string {
