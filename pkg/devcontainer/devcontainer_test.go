@@ -334,6 +334,78 @@ func TestGetOnCreateCommandArgs(t *testing.T) {
 	}
 }
 
+func TestGetPostStartCommandArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  interface{}
+		expected []string
+	}{
+		{
+			name:     "nil command",
+			command:  nil,
+			expected: nil,
+		},
+		{
+			name:     "string command",
+			command:  "npm start",
+			expected: []string{"/bin/sh", "-c", "npm start"},
+		},
+		{
+			name:     "empty string command",
+			command:  "",
+			expected: []string{"/bin/sh", "-c", ""},
+		},
+		{
+			name:     "array command",
+			command:  []interface{}{"npm", "run", "start"},
+			expected: []string{"npm", "run", "start"},
+		},
+		{
+			name:     "empty array command",
+			command:  []interface{}{},
+			expected: []string{},
+		},
+		{
+			name:     "array command with non-string elements",
+			command:  []interface{}{"echo", 123, "hello"},
+			expected: []string{"echo", "hello"},
+		},
+		{
+			name:     "invalid command type",
+			command:  123,
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dc := &DevContainer{
+				PostStartCommand: tt.command,
+			}
+
+			result := dc.GetPostStartCommandArgs()
+
+			if tt.expected == nil {
+				if result != nil {
+					t.Errorf("Expected nil, got %v", result)
+				}
+				return
+			}
+
+			if len(result) != len(tt.expected) {
+				t.Errorf("Expected length %d, got %d", len(tt.expected), len(result))
+				return
+			}
+
+			for i, expected := range tt.expected {
+				if result[i] != expected {
+					t.Errorf("Expected result[%d] = %q, got %q", i, expected, result[i])
+				}
+			}
+		})
+	}
+}
+
 func TestGetUpdateContentCommandArgs(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -535,5 +607,30 @@ func TestParseCommand(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParse_PostStartCommand(t *testing.T) {
+	dc, err := Parse("../../test/fixtures/post-start-command.json")
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if dc.PostStartCommand != "npm start" {
+		t.Errorf("Expected PostStartCommand = 'npm start', got %v", dc.PostStartCommand)
+	}
+
+	args := dc.GetPostStartCommandArgs()
+	expected := []string{"/bin/sh", "-c", "npm start"}
+
+	if len(args) != len(expected) {
+		t.Errorf("Expected %d args, got %d", len(expected), len(args))
+		return
+	}
+
+	for i, expected := range expected {
+		if args[i] != expected {
+			t.Errorf("Expected args[%d] = %q, got %q", i, expected, args[i])
+		}
 	}
 }

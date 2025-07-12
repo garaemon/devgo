@@ -98,6 +98,13 @@ func (dc *DevContainer) GetPostCreateCommandArgs() []string {
 	return parseCommand(dc.PostCreateCommand)
 }
 
+func (dc *DevContainer) GetPostStartCommandArgs() []string {
+	if dc.PostStartCommand == nil {
+		return nil
+	}
+	return parseCommand(dc.PostStartCommand)
+}
+
 func parseCommand(cmd interface{}) []string {
 	if cmd == nil {
 		return nil

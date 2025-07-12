@@ -1,0 +1,6 @@
+{
+  "name": "Post Start Command Test",
+  "image": "node:18",
+  "workspaceFolder": "/workspace",
+  "postStartCommand": "npm start"
+}
