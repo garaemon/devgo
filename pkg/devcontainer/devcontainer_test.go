@@ -103,6 +103,35 @@ func TestParse_Minimal(t *testing.T) {
 	}
 }
 
+func TestParse_UpdateContentCommand(t *testing.T) {
+	fixturePath := filepath.Join("..", "..", "test", "fixtures", "update-content-command.json")
+
+	dc, err := Parse(fixturePath)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if dc.Name != "Update Content Command Test" {
+		t.Errorf("Name = %v, want %v", dc.Name, "Update Content Command Test")
+	}
+
+	if dc.Image != "node:18" {
+		t.Errorf("Image = %v, want %v", dc.Image, "node:18")
+	}
+
+	args := dc.GetUpdateContentCommandArgs()
+	expected := []string{"/bin/sh", "-c", "npm update && npm audit fix"}
+	if len(args) != len(expected) {
+		t.Errorf("GetUpdateContentCommandArgs() length = %v, want %v", len(args), len(expected))
+		return
+	}
+	for i, arg := range args {
+		if arg != expected[i] {
+			t.Errorf("GetUpdateContentCommandArgs()[%d] = %v, want %v", i, arg, expected[i])
+		}
+	}
+}
+
 func TestParse_NonExistentFile(t *testing.T) {
 	_, err := Parse("nonexistent.json")
 	if err == nil {
@@ -299,6 +328,56 @@ func TestGetOnCreateCommandArgs(t *testing.T) {
 			for i, arg := range got {
 				if arg != tt.expected[i] {
 					t.Errorf("GetOnCreateCommandArgs()[%d] = %v, want %v", i, arg, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestGetUpdateContentCommandArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected []string
+	}{
+		{
+			name:     "no update content command",
+			dc:       DevContainer{},
+			expected: nil,
+		},
+		{
+			name: "string update content command",
+			dc: DevContainer{
+				UpdateContentCommand: "npm update",
+			},
+			expected: []string{"/bin/sh", "-c", "npm update"},
+		},
+		{
+			name: "array update content command",
+			dc: DevContainer{
+				UpdateContentCommand: []interface{}{"pip", "install", "--upgrade", "-r", "requirements.txt"},
+			},
+			expected: []string{"pip", "install", "--upgrade", "-r", "requirements.txt"},
+		},
+		{
+			name: "mixed array with non-string (should be ignored)",
+			dc: DevContainer{
+				UpdateContentCommand: []interface{}{"pip", "install", 123, "--upgrade"},
+			},
+			expected: []string{"pip", "install", "--upgrade"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.GetUpdateContentCommandArgs()
+			if len(got) != len(tt.expected) {
+				t.Errorf("GetUpdateContentCommandArgs() length = %v, want %v", len(got), len(tt.expected))
+				return
+			}
+			for i, arg := range got {
+				if arg != tt.expected[i] {
+					t.Errorf("GetUpdateContentCommandArgs()[%d] = %v, want %v", i, arg, tt.expected[i])
 				}
 			}
 		})
