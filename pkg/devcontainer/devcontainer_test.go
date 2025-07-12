@@ -255,6 +255,56 @@ func TestGetContainerUser(t *testing.T) {
 	}
 }
 
+func TestGetOnCreateCommandArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected []string
+	}{
+		{
+			name:     "no on create command",
+			dc:       DevContainer{},
+			expected: nil,
+		},
+		{
+			name: "string on create command",
+			dc: DevContainer{
+				OnCreateCommand: "apt-get update",
+			},
+			expected: []string{"/bin/sh", "-c", "apt-get update"},
+		},
+		{
+			name: "array on create command",
+			dc: DevContainer{
+				OnCreateCommand: []interface{}{"apt-get", "update"},
+			},
+			expected: []string{"apt-get", "update"},
+		},
+		{
+			name: "mixed array with non-string (should be ignored)",
+			dc: DevContainer{
+				OnCreateCommand: []interface{}{"apt-get", 123, "update"},
+			},
+			expected: []string{"apt-get", "update"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.GetOnCreateCommandArgs()
+			if len(got) != len(tt.expected) {
+				t.Errorf("GetOnCreateCommandArgs() length = %v, want %v", len(got), len(tt.expected))
+				return
+			}
+			for i, arg := range got {
+				if arg != tt.expected[i] {
+					t.Errorf("GetOnCreateCommandArgs()[%d] = %v, want %v", i, arg, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
 func TestGetPostCreateCommandArgs(t *testing.T) {
 	tests := []struct {
 		name     string

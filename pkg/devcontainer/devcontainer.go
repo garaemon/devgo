@@ -68,6 +68,13 @@ func (dc *DevContainer) GetContainerUser() string {
 	return "root"
 }
 
+func (dc *DevContainer) GetOnCreateCommandArgs() []string {
+	if dc.OnCreateCommand == nil {
+		return nil
+	}
+	return parseCommand(dc.OnCreateCommand)
+}
+
 func (dc *DevContainer) GetPostCreateCommandArgs() []string {
 	if dc.PostCreateCommand == nil {
 		return nil
