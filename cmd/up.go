@@ -184,7 +184,11 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 		return err
 	}
 
-	return executePostStartCommand(ctx, devContainer, containerName, workspaceDir)
+	if err := executePostStartCommand(ctx, devContainer, containerName, workspaceDir); err != nil {
+		return err
+	}
+
+	return executePostAttachCommand(ctx, devContainer, containerName, workspaceDir)
 }
 
 func executeOnCreateCommand(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
@@ -269,6 +273,27 @@ func executePostStartCommand(ctx context.Context, devContainer *devcontainer.Dev
 	}()
 
 	return executeCommandInContainer(ctx, cli, containerName, postStartArgs, devContainer)
+}
+
+func executePostAttachCommand(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
+	postAttachArgs := devContainer.GetPostAttachCommandArgs()
+	if len(postAttachArgs) == 0 {
+		return nil
+	}
+
+	fmt.Printf("Running postAttachCommand: %s\n", strings.Join(postAttachArgs, " "))
+
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client for postAttachCommand: %w", err)
+	}
+	defer func() {
+		if closeErr := cli.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+		}
+	}()
+
+	return executeCommandInContainer(ctx, cli, containerName, postAttachArgs, devContainer)
 }
 
 func executeInitializeCommand(devContainer *devcontainer.DevContainer, workspaceDir string) error {
