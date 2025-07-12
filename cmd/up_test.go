@@ -1307,3 +1307,96 @@ func TestExecuteUpdateContentCommand(t *testing.T) {
 		})
 	}
 }
+func TestExecutePostStartCommand(t *testing.T) {
+	tests := []struct {
+		name            string
+		devContainer    *devcontainer.DevContainer
+		containerName   string
+		workspaceDir    string
+		expectError     bool
+		expectedCommand []string
+	}{
+		{
+			name: "no postStartCommand",
+			devContainer: &devcontainer.DevContainer{
+				PostStartCommand: nil,
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: nil,
+		},
+		{
+			name: "string postStartCommand",
+			devContainer: &devcontainer.DevContainer{
+				PostStartCommand: "npm start",
+				ContainerUser:    "root",
+				WorkspaceFolder:  "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"/bin/sh", "-c", "npm start"},
+		},
+		{
+			name: "array postStartCommand",
+			devContainer: &devcontainer.DevContainer{
+				PostStartCommand: []interface{}{"npm", "run", "start"},
+				ContainerUser:    "node",
+				WorkspaceFolder:  "/app",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"npm", "run", "start"},
+		},
+		{
+			name: "empty array postStartCommand",
+			devContainer: &devcontainer.DevContainer{
+				PostStartCommand: []interface{}{},
+				ContainerUser:    "root",
+				WorkspaceFolder:  "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{},
+		},
+		{
+			name: "mixed array with non-string elements",
+			devContainer: &devcontainer.DevContainer{
+				PostStartCommand: []interface{}{"echo", 123, "hello"},
+				ContainerUser:    "root",
+				WorkspaceFolder:  "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"echo", "hello"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := tt.devContainer.GetPostStartCommandArgs()
+			
+			if tt.expectedCommand == nil {
+				if args != nil {
+					t.Errorf("expected nil command args, got %v", args)
+				}
+				return
+			}
+
+			if len(args) != len(tt.expectedCommand) {
+				t.Errorf("expected command length %d, got %d", len(tt.expectedCommand), len(args))
+				return
+			}
+
+			for i, expected := range tt.expectedCommand {
+				if args[i] != expected {
+					t.Errorf("command arg %d: expected %s, got %s", i, expected, args[i])
+				}
+			}
+		})
+	}
+}
