@@ -404,7 +404,11 @@ func TestOnCreateCommandIntegration(t *testing.T) {
 
 			containerName := "devgo-" + filepath.Base(tempDir)
 			cleanupContainer(t, containerName)
-			defer cleanupContainer(t, containerName)
+			defer func() {
+				// Clean up container-created files before container cleanup
+				cleanupContainerFiles(t, containerName, tempDir)
+				cleanupContainer(t, containerName)
+			}()
 
 			// Change to working directory
 			originalDir, err := os.Getwd()
@@ -492,7 +496,10 @@ func TestOnCreateCommandFailure(t *testing.T) {
 
 	containerName := "devgo-" + filepath.Base(tempDir)
 	cleanupContainer(t, containerName)
-	defer cleanupContainer(t, containerName)
+	defer func() {
+		cleanupContainerFiles(t, containerName, tempDir)
+		cleanupContainer(t, containerName)
+	}()
 
 	// Change to working directory
 	originalDir, err := os.Getwd()
@@ -572,4 +579,33 @@ func runCommandInContainer(t *testing.T, containerName string, command []string)
 	}
 	
 	return string(output)
+}
+
+func cleanupContainerFiles(t *testing.T, containerName, workspaceDir string) {
+	t.Helper()
+	
+	// Only cleanup if container exists and is running
+	if !isContainerRunning(t, containerName) {
+		// Check if container exists but is stopped
+		cmd := exec.Command("docker", "ps", "-a", "--filter", fmt.Sprintf("name=%s", containerName), "--format", "{{.Names}}")
+		output, err := cmd.Output()
+		if err != nil || !strings.Contains(string(output), containerName) {
+			return // Container doesn't exist
+		}
+	}
+	
+	// Remove files that may have been created by onCreateCommand with root permissions
+	// This prevents permission errors during test cleanup
+	cleanupCommands := [][]string{
+		{"rm", "-rf", "/workspace/oncreate-dir"},
+		{"rm", "-f", "/workspace/created-by-oncreate.txt"},
+		{"rm", "-f", "/workspace/curl-version.txt"},
+		{"rm", "-f", "/workspace/execution-order.txt"},
+	}
+	
+	for _, cmdArgs := range cleanupCommands {
+		cmd := exec.Command("docker", "exec", containerName)
+		cmd.Args = append(cmd.Args, cmdArgs...)
+		cmd.Run() // Ignore errors - files might not exist
+	}
 }
