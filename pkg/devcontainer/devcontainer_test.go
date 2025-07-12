@@ -355,6 +355,56 @@ func TestGetPostCreateCommandArgs(t *testing.T) {
 	}
 }
 
+func TestGetInitializeCommandArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected []string
+	}{
+		{
+			name:     "no initialize command",
+			dc:       DevContainer{},
+			expected: nil,
+		},
+		{
+			name: "string initialize command",
+			dc: DevContainer{
+				InitializeCommand: "git config --global user.name test",
+			},
+			expected: []string{"/bin/sh", "-c", "git config --global user.name test"},
+		},
+		{
+			name: "array initialize command",
+			dc: DevContainer{
+				InitializeCommand: []interface{}{"git", "config", "--global", "user.name", "test"},
+			},
+			expected: []string{"git", "config", "--global", "user.name", "test"},
+		},
+		{
+			name: "mixed array with non-string (should be ignored)",
+			dc: DevContainer{
+				InitializeCommand: []interface{}{"git", "config", 123, "user.name", "test"},
+			},
+			expected: []string{"git", "config", "user.name", "test"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.GetInitializeCommandArgs()
+			if len(got) != len(tt.expected) {
+				t.Errorf("GetInitializeCommandArgs() length = %v, want %v", len(got), len(tt.expected))
+				return
+			}
+			for i, arg := range got {
+				if arg != tt.expected[i] {
+					t.Errorf("GetInitializeCommandArgs()[%d] = %v, want %v", i, arg, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
 func TestParseCommand(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -1,6 +1,8 @@
 module github.com/garaemon/devgo
 
-go 1.21
+go 1.23.0
+
+toolchain go1.24.4
 
 require (
 	github.com/opencontainers/image-spec v1.1.1

@@ -27,6 +27,7 @@ type DevContainer struct {
 	ContainerEnv      map[string]string         `json:"containerEnv,omitempty"`
 	ForwardPorts      []interface{}             `json:"forwardPorts,omitempty"`
 	PortsAttributes   map[string]PortAttributes `json:"portsAttributes,omitempty"`
+	InitializeCommand interface{}               `json:"initializeCommand,omitempty"`
 	OnCreateCommand   interface{}               `json:"onCreateCommand,omitempty"`
 	PostCreateCommand interface{}               `json:"postCreateCommand,omitempty"`
 	PostStartCommand  interface{}               `json:"postStartCommand,omitempty"`
@@ -66,6 +67,13 @@ func (dc *DevContainer) GetContainerUser() string {
 		return dc.ContainerUser
 	}
 	return "root"
+}
+
+func (dc *DevContainer) GetInitializeCommandArgs() []string {
+	if dc.InitializeCommand == nil {
+		return nil
+	}
+	return parseCommand(dc.InitializeCommand)
 }
 
 func (dc *DevContainer) GetOnCreateCommandArgs() []string {
