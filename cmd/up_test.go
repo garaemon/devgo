@@ -1052,6 +1052,86 @@ func TestExecuteOnCreateCommandErrorCases(t *testing.T) {
 	}
 }
 
+func TestExecuteInitializeCommand(t *testing.T) {
+	tests := []struct {
+		name            string
+		devContainer    *devcontainer.DevContainer
+		workspaceDir    string
+		expectError     bool
+		expectedCommand []string
+	}{
+		{
+			name: "no initializeCommand",
+			devContainer: &devcontainer.DevContainer{
+				InitializeCommand: nil,
+			},
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: nil,
+		},
+		{
+			name: "string initializeCommand",
+			devContainer: &devcontainer.DevContainer{
+				InitializeCommand: "git config --global user.name test",
+			},
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"/bin/sh", "-c", "git config --global user.name test"},
+		},
+		{
+			name: "array initializeCommand",
+			devContainer: &devcontainer.DevContainer{
+				InitializeCommand: []interface{}{"git", "config", "--global", "user.name", "test"},
+			},
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"git", "config", "--global", "user.name", "test"},
+		},
+		{
+			name: "empty array initializeCommand",
+			devContainer: &devcontainer.DevContainer{
+				InitializeCommand: []interface{}{},
+			},
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{},
+		},
+		{
+			name: "mixed array with non-string elements",
+			devContainer: &devcontainer.DevContainer{
+				InitializeCommand: []interface{}{"echo", 123, "hello"},
+			},
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"echo", "hello"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := tt.devContainer.GetInitializeCommandArgs()
+			
+			if tt.expectedCommand == nil {
+				if args != nil {
+					t.Errorf("expected nil command args, got %v", args)
+				}
+				return
+			}
+
+			if len(args) != len(tt.expectedCommand) {
+				t.Errorf("expected command length %d, got %d", len(tt.expectedCommand), len(args))
+				return
+			}
+
+			for i, expected := range tt.expectedCommand {
+				if args[i] != expected {
+					t.Errorf("command arg %d: expected %s, got %s", i, expected, args[i])
+				}
+			}
+		})
+	}
+}
+
 func TestExecuteOnCreateCommandCoverageEnhancement(t *testing.T) {
 	tests := []struct {
 		name         string

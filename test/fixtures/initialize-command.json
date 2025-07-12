@@ -1,0 +1,9 @@
+{
+	"name": "Initialize Command Test Container",
+	"image": "golang:1.21",
+	"workspaceFolder": "/workspace",
+	"containerUser": "vscode",
+	"initializeCommand": "echo 'Running initialize command on host'",
+	"onCreateCommand": "apt-get update",
+	"postCreateCommand": "go mod download"
+}

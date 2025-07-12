@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -96,6 +98,11 @@ func runUpCommand(args []string) error {
 	}()
 	
 	ctx := context.Background()
+
+	if err := executeInitializeCommand(devContainer, workspaceDir); err != nil {
+		return fmt.Errorf("failed to execute initialize command: %w", err)
+	}
+
 	return startContainerWithDocker(ctx, devContainer, containerName, workspaceDir, dockerClient)
 }
 
@@ -212,6 +219,26 @@ func executePostCreateCommand(ctx context.Context, devContainer *devcontainer.De
 	}()
 
 	return executeCommandInContainer(ctx, cli, containerName, postCreateArgs, devContainer)
+}
+
+func executeInitializeCommand(devContainer *devcontainer.DevContainer, workspaceDir string) error {
+	initArgs := devContainer.GetInitializeCommandArgs()
+	if len(initArgs) == 0 {
+		return nil
+	}
+
+	fmt.Printf("Running initializeCommand: %s\n", strings.Join(initArgs, " "))
+
+	cmd := exec.Command(initArgs[0], initArgs[1:]...)
+	cmd.Dir = workspaceDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("initializeCommand failed: %w", err)
+	}
+
+	return nil
 }
 
 // realDockerClient methods
