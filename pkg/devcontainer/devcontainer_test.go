@@ -610,6 +610,78 @@ func TestParseCommand(t *testing.T) {
 	}
 }
 
+func TestGetPostAttachCommandArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  interface{}
+		expected []string
+	}{
+		{
+			name:     "nil command",
+			command:  nil,
+			expected: nil,
+		},
+		{
+			name:     "string command",
+			command:  "code .",
+			expected: []string{"/bin/sh", "-c", "code ."},
+		},
+		{
+			name:     "empty string command",
+			command:  "",
+			expected: []string{"/bin/sh", "-c", ""},
+		},
+		{
+			name:     "array command",
+			command:  []interface{}{"code", "--new-window", "."},
+			expected: []string{"code", "--new-window", "."},
+		},
+		{
+			name:     "empty array command",
+			command:  []interface{}{},
+			expected: []string{},
+		},
+		{
+			name:     "array command with non-string elements",
+			command:  []interface{}{"echo", 123, "attached"},
+			expected: []string{"echo", "attached"},
+		},
+		{
+			name:     "invalid command type",
+			command:  123,
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dc := &DevContainer{
+				PostAttachCommand: tt.command,
+			}
+
+			result := dc.GetPostAttachCommandArgs()
+
+			if tt.expected == nil {
+				if result != nil {
+					t.Errorf("Expected nil, got %v", result)
+				}
+				return
+			}
+
+			if len(result) != len(tt.expected) {
+				t.Errorf("Expected length %d, got %d", len(tt.expected), len(result))
+				return
+			}
+
+			for i, expected := range tt.expected {
+				if result[i] != expected {
+					t.Errorf("Expected result[%d] = %q, got %q", i, expected, result[i])
+				}
+			}
+		})
+	}
+}
+
 func TestParse_PostStartCommand(t *testing.T) {
 	dc, err := Parse("../../test/fixtures/post-start-command.json")
 	if err != nil {

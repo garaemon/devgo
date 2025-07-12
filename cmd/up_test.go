@@ -1400,3 +1400,97 @@ func TestExecutePostStartCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestExecutePostAttachCommand(t *testing.T) {
+	tests := []struct {
+		name            string
+		devContainer    *devcontainer.DevContainer
+		containerName   string
+		workspaceDir    string
+		expectError     bool
+		expectedCommand []string
+	}{
+		{
+			name: "no postAttachCommand",
+			devContainer: &devcontainer.DevContainer{
+				PostAttachCommand: nil,
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: nil,
+		},
+		{
+			name: "string postAttachCommand",
+			devContainer: &devcontainer.DevContainer{
+				PostAttachCommand: "code .",
+				ContainerUser:     "root",
+				WorkspaceFolder:   "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"/bin/sh", "-c", "code ."},
+		},
+		{
+			name: "array postAttachCommand",
+			devContainer: &devcontainer.DevContainer{
+				PostAttachCommand: []interface{}{"code", "--new-window", "."},
+				ContainerUser:     "vscode",
+				WorkspaceFolder:   "/app",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"code", "--new-window", "."},
+		},
+		{
+			name: "empty array postAttachCommand",
+			devContainer: &devcontainer.DevContainer{
+				PostAttachCommand: []interface{}{},
+				ContainerUser:     "root",
+				WorkspaceFolder:   "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{},
+		},
+		{
+			name: "mixed array with non-string elements",
+			devContainer: &devcontainer.DevContainer{
+				PostAttachCommand: []interface{}{"echo", 123, "attached"},
+				ContainerUser:     "root",
+				WorkspaceFolder:   "/workspace",
+			},
+			containerName:   "test-container",
+			workspaceDir:    "/workspace",
+			expectError:     false,
+			expectedCommand: []string{"echo", "attached"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := tt.devContainer.GetPostAttachCommandArgs()
+			
+			if tt.expectedCommand == nil {
+				if args != nil {
+					t.Errorf("expected nil command args, got %v", args)
+				}
+				return
+			}
+
+			if len(args) != len(tt.expectedCommand) {
+				t.Errorf("expected command length %d, got %d", len(tt.expectedCommand), len(args))
+				return
+			}
+
+			for i, expected := range tt.expectedCommand {
+				if args[i] != expected {
+					t.Errorf("command arg %d: expected %s, got %s", i, expected, args[i])
+				}
+			}
+		})
+	}
+}

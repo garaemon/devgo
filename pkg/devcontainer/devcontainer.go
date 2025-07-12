@@ -32,6 +32,7 @@ type DevContainer struct {
 	UpdateContentCommand interface{} `json:"updateContentCommand,omitempty"`
 	PostCreateCommand   interface{} `json:"postCreateCommand,omitempty"`
 	PostStartCommand    interface{} `json:"postStartCommand,omitempty"`
+	PostAttachCommand   interface{} `json:"postAttachCommand,omitempty"`
 }
 
 func Parse(filePath string) (*DevContainer, error) {
@@ -103,6 +104,13 @@ func (dc *DevContainer) GetPostStartCommandArgs() []string {
 		return nil
 	}
 	return parseCommand(dc.PostStartCommand)
+}
+
+func (dc *DevContainer) GetPostAttachCommandArgs() []string {
+	if dc.PostAttachCommand == nil {
+		return nil
+	}
+	return parseCommand(dc.PostAttachCommand)
 }
 
 func parseCommand(cmd interface{}) []string {
