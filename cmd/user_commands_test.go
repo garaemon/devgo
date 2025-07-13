@@ -74,14 +74,3 @@ func TestRunUserCommandsCommand(t *testing.T) {
 	}
 }
 
-func TestFindRunningDevContainer(t *testing.T) {
-	// This test requires Docker to be running and would need actual containers
-	// In a real test environment, you would mock the Docker client
-	t.Skip("Skipping test that requires running Docker containers")
-}
-
-func TestRunLifecycleCommands(t *testing.T) {
-	// This test requires Docker to be running and would need actual containers
-	// In a real test environment, you would mock the Docker client and command execution
-	t.Skip("Skipping test that requires running Docker containers")
-}
