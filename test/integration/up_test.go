@@ -382,7 +382,8 @@ func TestOnCreateCommandIntegration(t *testing.T) {
   "image": "alpine:3.19",
   "workspaceFolder": "/workspace",
   "onCreateCommand": "echo 'step1: onCreateCommand' > /workspace/execution-order.txt",
-  "postCreateCommand": "echo 'step2: postCreateCommand' >> /workspace/execution-order.txt"
+  "postCreateCommand": "echo 'step2: postCreateCommand' >> /workspace/execution-order.txt",
+  "waitFor": "postCreateCommand"
 }`,
 			expectedFiles: []string{"/workspace/execution-order.txt"},
 			verifyCommand: []string{"cat", "/workspace/execution-order.txt"},
