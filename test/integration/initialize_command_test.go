@@ -20,11 +20,11 @@ func TestInitializeCommandIntegration(t *testing.T) {
 	}
 
 	tests := []struct {
-		name               string
+		name                string
 		devcontainerContent string
-		setupFiles         func(workspaceDir string) error
-		expectError        bool
-		validateResults    func(t *testing.T, workspaceDir string, output string)
+		setupFiles          func(workspaceDir string) error
+		expectError         bool
+		validateResults     func(t *testing.T, workspaceDir string, output string)
 	}{
 		{
 			name: "initialize command writes to workspace",
@@ -72,7 +72,7 @@ func TestInitializeCommandIntegration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create temporary workspace
 			tempDir := t.TempDir()
-			
+
 			// Create .devcontainer directory
 			devcontainerDir := filepath.Join(tempDir, ".devcontainer")
 			if err := os.MkdirAll(devcontainerDir, 0755); err != nil {
@@ -136,4 +136,3 @@ func TestInitializeCommandIntegration(t *testing.T) {
 		})
 	}
 }
-

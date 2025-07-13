@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	
+
 	"github.com/garaemon/devgo/pkg/devcontainer"
 	// "github.com/garaemon/devgo/pkg/config"
 	// "github.com/garaemon/devgo/pkg/docker"
@@ -26,7 +26,7 @@ var (
 // parseAllFlags parses all flags from the argument list, returning non-flag arguments
 func parseAllFlags(args []string) []string {
 	var nonFlagArgs []string
-	
+
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--help" {
@@ -57,7 +57,7 @@ func parseAllFlags(args []string) []string {
 			nonFlagArgs = append(nonFlagArgs, arg)
 		}
 	}
-	
+
 	return nonFlagArgs
 }
 
@@ -213,6 +213,13 @@ func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDi
 	if containerName != "" {
 		return containerName
 	}
+
+	// For docker compose, use service name with project prefix
+	if devContainer.HasDockerCompose() && devContainer.GetService() != "" {
+		projectName := filepath.Base(workspaceDir)
+		return fmt.Sprintf("%s-%s-1", projectName, devContainer.GetService())
+	}
+
 	if devContainer.Name != "" {
 		return devContainer.Name
 	}

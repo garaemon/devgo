@@ -33,7 +33,7 @@ func createMockHijackedResponse() types.HijackedResponse {
 	buf := &bytes.Buffer{}
 	conn := &mockConn{Buffer: buf}
 	reader := bufio.NewReader(bytes.NewReader([]byte("mock output")))
-	
+
 	return types.HijackedResponse{
 		Conn:   conn,
 		Reader: reader,
@@ -42,12 +42,12 @@ func createMockHijackedResponse() types.HijackedResponse {
 
 // mockExecClient implements a mock Docker client for testing exec functionality
 type mockExecClient struct {
-	containers          []container.Summary
-	listError           error
-	execCreateResponse  container.ExecCreateResponse
-	execCreateError     error
-	execAttachResponse  types.HijackedResponse
-	execAttachError     error
+	containers         []container.Summary
+	listError          error
+	execCreateResponse container.ExecCreateResponse
+	execCreateError    error
+	execAttachResponse types.HijackedResponse
+	execAttachError    error
 }
 
 func (m *mockExecClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
@@ -81,12 +81,12 @@ func (m *mockExecClient) Close() error {
 
 func TestFindRunningContainer(t *testing.T) {
 	tests := []struct {
-		name           string
-		containerName  string
-		containers     []container.Summary
-		listError      error
-		expectedID     string
-		expectError    bool
+		name          string
+		containerName string
+		containers    []container.Summary
+		listError     error
+		expectedID    string
+		expectError   bool
 	}{
 		{
 			name:          "container found",
@@ -280,16 +280,16 @@ func TestExecuteCommandInContainer(t *testing.T) {
 				buf := &bytes.Buffer{}
 				// Write a simple Docker stream header + content for stdcopy
 				// Docker stream format: [stream_type][0][0][0][payload_size][payload]
-				buf.WriteByte(1) // stdout stream type
-				buf.WriteByte(0) // padding
-				buf.WriteByte(0) // padding  
-				buf.WriteByte(0) // padding
-				buf.WriteByte(0) // payload size (high byte)
-				buf.WriteByte(0) // payload size
-				buf.WriteByte(0) // payload size
-				buf.WriteByte(4) // payload size (4 bytes: "test")
+				buf.WriteByte(1)        // stdout stream type
+				buf.WriteByte(0)        // padding
+				buf.WriteByte(0)        // padding
+				buf.WriteByte(0)        // padding
+				buf.WriteByte(0)        // payload size (high byte)
+				buf.WriteByte(0)        // payload size
+				buf.WriteByte(0)        // payload size
+				buf.WriteByte(4)        // payload size (4 bytes: "test")
 				buf.WriteString("test") // payload
-				
+
 				mockResp = types.HijackedResponse{
 					Conn:   &mockConn{Buffer: &bytes.Buffer{}},
 					Reader: bufio.NewReader(buf),
@@ -376,12 +376,12 @@ func TestExecCommandContainerNameLogic(t *testing.T) {
 	// This is more of an integration test to ensure consistency
 
 	workspaceDir := "/test/workspace"
-	
+
 	tests := []struct {
-		name           string
-		devContainer   *devcontainer.DevContainer
-		containerName  string
-		expectedName   string
+		name          string
+		devContainer  *devcontainer.DevContainer
+		containerName string
+		expectedName  string
 	}{
 		{
 			name: "uses devcontainer name",

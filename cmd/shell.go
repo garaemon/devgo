@@ -28,7 +28,7 @@ func runShellCommand(args []string) error {
 	}
 
 	containerName := determineContainerName(devContainer, workspaceDir)
-	
+
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)

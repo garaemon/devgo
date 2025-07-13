@@ -144,7 +144,7 @@ func TestDetermineImageTag(t *testing.T) {
 			// Save original imageName and restore after test
 			originalImageName := imageName
 			defer func() { imageName = originalImageName }()
-			
+
 			imageName = tt.imageName
 			result := determineImageTag(tt.devContainer, tt.workspaceDir)
 			if result != tt.expected {
@@ -177,17 +177,17 @@ func TestGetWorkspaceDirectory(t *testing.T) {
 			// Save original workspaceFolder and restore after test
 			originalWorkspaceFolder := workspaceFolder
 			defer func() { workspaceFolder = originalWorkspaceFolder }()
-			
+
 			workspaceFolder = tt.workspaceFolder
 			result, err := getWorkspaceDirectory()
-			
+
 			if tt.expectError && err == nil {
 				t.Error("expected error but got none")
 			}
 			if !tt.expectError && err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
-			
+
 			if !tt.expectError {
 				if tt.workspaceFolder != "" && result != tt.workspaceFolder {
 					t.Errorf("expected %s, got %s", tt.workspaceFolder, result)

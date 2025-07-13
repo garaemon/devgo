@@ -228,7 +228,7 @@ func TestDetermineWorkspaceFolder(t *testing.T) {
 			// Create a mock devcontainer path for testing
 			testDevcontainerPath := "/test/workspace/.devcontainer/devcontainer.json"
 			result := determineWorkspaceFolder(testDevcontainerPath)
-			
+
 			if tt.workspaceFlag != "" {
 				if result != tt.expectedResult {
 					t.Errorf("expected %s but got %s", tt.expectedResult, result)
@@ -246,32 +246,32 @@ func TestDetermineWorkspaceFolder(t *testing.T) {
 
 func TestDetermineContainerName(t *testing.T) {
 	tests := []struct {
-		name             string
+		name              string
 		containerNameFlag string
 		devContainerName  string
-		workspaceDir     string
-		expectedResult   string
+		workspaceDir      string
+		expectedResult    string
 	}{
 		{
-			name:             "container name flag provided",
+			name:              "container name flag provided",
 			containerNameFlag: "custom-name",
 			devContainerName:  "devcontainer-name",
-			workspaceDir:     "/path/to/workspace",
-			expectedResult:   "custom-name",
+			workspaceDir:      "/path/to/workspace",
+			expectedResult:    "custom-name",
 		},
 		{
-			name:             "devcontainer name provided",
+			name:              "devcontainer name provided",
 			containerNameFlag: "",
 			devContainerName:  "devcontainer-name",
-			workspaceDir:     "/path/to/workspace",
-			expectedResult:   "devcontainer-name",
+			workspaceDir:      "/path/to/workspace",
+			expectedResult:    "devcontainer-name",
 		},
 		{
-			name:             "default name from workspace",
+			name:              "default name from workspace",
 			containerNameFlag: "",
 			devContainerName:  "",
-			workspaceDir:     "/path/to/workspace",
-			expectedResult:   "devgo-workspace",
+			workspaceDir:      "/path/to/workspace",
+			expectedResult:    "devgo-workspace",
 		},
 	}
 
@@ -298,11 +298,11 @@ func TestDetermineContainerName(t *testing.T) {
 
 // mockDockerAPIClient implements the dockerAPIClient interface for testing
 type mockDockerAPIClient struct {
-	containers    []container.Summary
-	images        []image.Summary
-	listError     error
+	containers     []container.Summary
+	images         []image.Summary
+	listError      error
 	imageListError error
-	pullError     error
+	pullError      error
 }
 
 func (m *mockDockerAPIClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
@@ -894,7 +894,7 @@ func TestExecuteOnCreateCommand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test the command parsing logic
 			args := tt.devContainer.GetOnCreateCommandArgs()
-			
+
 			if tt.expectedCommand == nil {
 				if args != nil {
 					t.Errorf("expected nil command args, got %v", args)
@@ -959,7 +959,7 @@ func TestExecuteOnCreateCommandIntegration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			args := tt.devContainer.GetOnCreateCommandArgs()
-			
+
 			if len(args) == 0 {
 				// Should return early without any Docker operations
 				if tt.expectOutput != "" {
@@ -1018,7 +1018,7 @@ func TestExecuteOnCreateCommandErrorCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			args := tt.devContainer.GetOnCreateCommandArgs()
-			
+
 			// Test that parseCommand handles edge cases appropriately
 			switch tt.name {
 			case "unsupported command type":
@@ -1110,7 +1110,7 @@ func TestExecuteInitializeCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			args := tt.devContainer.GetInitializeCommandArgs()
-			
+
 			if tt.expectedCommand == nil {
 				if args != nil {
 					t.Errorf("expected nil command args, got %v", args)
@@ -1146,7 +1146,7 @@ func TestExecuteOnCreateCommandCoverageEnhancement(t *testing.T) {
 			testFocus: "early_return",
 		},
 		{
-			name: "test early return for empty array command",  
+			name: "test early return for empty array command",
 			devContainer: &devcontainer.DevContainer{
 				OnCreateCommand: []interface{}{},
 			},
@@ -1175,7 +1175,7 @@ func TestExecuteOnCreateCommandCoverageEnhancement(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			args := tt.devContainer.GetOnCreateCommandArgs()
-			
+
 			switch tt.testFocus {
 			case "early_return":
 				if args != nil {
@@ -1185,7 +1185,7 @@ func TestExecuteOnCreateCommandCoverageEnhancement(t *testing.T) {
 				if len(args) == 0 {
 					t.Error("Expected non-empty args for command formatting test")
 				}
-				
+
 				// Verify command structure based on type
 				if tt.devContainer.OnCreateCommand != nil {
 					switch cmd := tt.devContainer.OnCreateCommand.(type) {
@@ -1286,7 +1286,7 @@ func TestExecuteUpdateContentCommand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test the command parsing logic only
 			args := tt.devContainer.GetUpdateContentCommandArgs()
-			
+
 			if tt.expectedCommand == nil {
 				if args != nil {
 					t.Errorf("expected nil command args, got %v", args)
@@ -1379,7 +1379,7 @@ func TestExecutePostStartCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			args := tt.devContainer.GetPostStartCommandArgs()
-			
+
 			if tt.expectedCommand == nil {
 				if args != nil {
 					t.Errorf("expected nil command args, got %v", args)
@@ -1473,7 +1473,7 @@ func TestExecutePostAttachCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			args := tt.devContainer.GetPostAttachCommandArgs()
-			
+
 			if tt.expectedCommand == nil {
 				if args != nil {
 					t.Errorf("expected nil command args, got %v", args)

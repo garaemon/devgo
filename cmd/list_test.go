@@ -231,7 +231,7 @@ func TestListDevgoContainers(t *testing.T) {
 			// Restore stdout and capture output
 			w.Close()
 			os.Stdout = oldStdout
-			
+
 			var buf bytes.Buffer
 			io.Copy(&buf, r)
 			output := buf.String()
@@ -277,7 +277,7 @@ func TestRunListCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := runListCommand(tt.args)
-			
+
 			// The function may fail if Docker is not available, which is acceptable
 			// We're mainly testing that the function doesn't panic and handles args correctly
 			if err != nil {

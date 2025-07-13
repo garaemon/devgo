@@ -44,6 +44,87 @@ func TestParse_SimpleImage(t *testing.T) {
 	}
 }
 
+func TestParse_DockerCompose(t *testing.T) {
+	content := `{
+		"name": "Docker Compose Dev Environment",
+		"dockerComposeFile": "docker-compose.yml",
+		"service": "web",
+		"runServices": ["web", "db"],
+		"workspaceFolder": "/workspace"
+	}`
+
+	tmpfile, err := os.CreateTemp("", "docker-compose-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
+
+	dc, err := Parse(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if !dc.HasDockerCompose() {
+		t.Error("HasDockerCompose() = false, want true")
+	}
+
+	composeFiles := dc.GetDockerComposeFiles()
+	if len(composeFiles) != 1 || composeFiles[0] != "docker-compose.yml" {
+		t.Errorf("GetDockerComposeFiles() = %v, want [docker-compose.yml]", composeFiles)
+	}
+
+	if dc.GetService() != "web" {
+		t.Errorf("GetService() = %v, want web", dc.GetService())
+	}
+
+	runServices := dc.GetRunServices()
+	if len(runServices) != 2 || runServices[0] != "web" || runServices[1] != "db" {
+		t.Errorf("GetRunServices() = %v, want [web db]", runServices)
+	}
+}
+
+func TestParse_DockerComposeMultipleFiles(t *testing.T) {
+	content := `{
+		"name": "Multi-file Docker Compose",
+		"dockerComposeFile": ["docker-compose.yml", "docker-compose.dev.yml"],
+		"service": "app"
+	}`
+
+	tmpfile, err := os.CreateTemp("", "docker-compose-multi-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
+
+	dc, err := Parse(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if !dc.HasDockerCompose() {
+		t.Error("HasDockerCompose() = false, want true")
+	}
+
+	composeFiles := dc.GetDockerComposeFiles()
+	if len(composeFiles) != 2 || composeFiles[0] != "docker-compose.yml" || composeFiles[1] != "docker-compose.dev.yml" {
+		t.Errorf("GetDockerComposeFiles() = %v, want [docker-compose.yml docker-compose.dev.yml]", composeFiles)
+	}
+}
+
 func TestParse_DockerfileBuild(t *testing.T) {
 	fixturePath := filepath.Join("..", "..", "test", "fixtures", "dockerfile-build.json")
 

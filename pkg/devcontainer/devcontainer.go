@@ -27,22 +27,25 @@ const (
 )
 
 type DevContainer struct {
-	Name              string                    `json:"name,omitempty"`
-	Image             string                    `json:"image,omitempty"`
-	Build             *BuildConfig              `json:"build,omitempty"`
-	WorkspaceFolder   string                    `json:"workspaceFolder,omitempty"`
-	ContainerUser     string                    `json:"containerUser,omitempty"`
-	RemoteUser        string                    `json:"remoteUser,omitempty"`
-	ContainerEnv      map[string]string         `json:"containerEnv,omitempty"`
-	ForwardPorts      []interface{}             `json:"forwardPorts,omitempty"`
-	PortsAttributes   map[string]PortAttributes `json:"portsAttributes,omitempty"`
-	InitializeCommand   interface{} `json:"initializeCommand,omitempty"`
-	OnCreateCommand     interface{} `json:"onCreateCommand,omitempty"`
-	UpdateContentCommand interface{} `json:"updateContentCommand,omitempty"`
-	PostCreateCommand   interface{} `json:"postCreateCommand,omitempty"`
-	PostStartCommand    interface{} `json:"postStartCommand,omitempty"`
-	PostAttachCommand   interface{} `json:"postAttachCommand,omitempty"`
-	WaitFor             string      `json:"waitFor,omitempty"`
+	Name                 string                    `json:"name,omitempty"`
+	Image                string                    `json:"image,omitempty"`
+	Build                *BuildConfig              `json:"build,omitempty"`
+	DockerComposeFile    interface{}               `json:"dockerComposeFile,omitempty"`
+	Service              string                    `json:"service,omitempty"`
+	RunServices          []string                  `json:"runServices,omitempty"`
+	WorkspaceFolder      string                    `json:"workspaceFolder,omitempty"`
+	ContainerUser        string                    `json:"containerUser,omitempty"`
+	RemoteUser           string                    `json:"remoteUser,omitempty"`
+	ContainerEnv         map[string]string         `json:"containerEnv,omitempty"`
+	ForwardPorts         []interface{}             `json:"forwardPorts,omitempty"`
+	PortsAttributes      map[string]PortAttributes `json:"portsAttributes,omitempty"`
+	InitializeCommand    interface{}               `json:"initializeCommand,omitempty"`
+	OnCreateCommand      interface{}               `json:"onCreateCommand,omitempty"`
+	UpdateContentCommand interface{}               `json:"updateContentCommand,omitempty"`
+	PostCreateCommand    interface{}               `json:"postCreateCommand,omitempty"`
+	PostStartCommand     interface{}               `json:"postStartCommand,omitempty"`
+	PostAttachCommand    interface{}               `json:"postAttachCommand,omitempty"`
+	WaitFor              string                    `json:"waitFor,omitempty"`
 }
 
 func Parse(filePath string) (*DevContainer, error) {
@@ -132,7 +135,7 @@ func (dc *DevContainer) GetWaitFor() string {
 
 func (dc *DevContainer) ShouldWaitForCommand(commandType string) bool {
 	waitFor := dc.GetWaitFor()
-	
+
 	switch waitFor {
 	case WaitForInitializeCommand:
 		return commandType == WaitForInitializeCommand
@@ -157,6 +160,39 @@ func (dc *DevContainer) ShouldWaitForCommand(commandType string) bool {
 	default:
 		return false
 	}
+}
+
+func (dc *DevContainer) HasDockerCompose() bool {
+	return dc.DockerComposeFile != nil
+}
+
+func (dc *DevContainer) GetDockerComposeFiles() []string {
+	if dc.DockerComposeFile == nil {
+		return nil
+	}
+
+	switch v := dc.DockerComposeFile.(type) {
+	case string:
+		return []string{v}
+	case []interface{}:
+		var files []string
+		for _, file := range v {
+			if str, ok := file.(string); ok {
+				files = append(files, str)
+			}
+		}
+		return files
+	default:
+		return nil
+	}
+}
+
+func (dc *DevContainer) GetService() string {
+	return dc.Service
+}
+
+func (dc *DevContainer) GetRunServices() []string {
+	return dc.RunServices
 }
 
 func parseCommand(cmd interface{}) []string {
