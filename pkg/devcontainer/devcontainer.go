@@ -17,6 +17,15 @@ type PortAttributes struct {
 	OnAutoForward string `json:"onAutoForward,omitempty"`
 }
 
+// waitFor lifecycle command constants
+const (
+	WaitForInitializeCommand    = "initializeCommand"
+	WaitForOnCreateCommand      = "onCreateCommand"
+	WaitForUpdateContentCommand = "updateContentCommand" // default
+	WaitForPostCreateCommand    = "postCreateCommand"
+	WaitForPostStartCommand     = "postStartCommand"
+)
+
 type DevContainer struct {
 	Name              string                    `json:"name,omitempty"`
 	Image             string                    `json:"image,omitempty"`
@@ -33,6 +42,7 @@ type DevContainer struct {
 	PostCreateCommand   interface{} `json:"postCreateCommand,omitempty"`
 	PostStartCommand    interface{} `json:"postStartCommand,omitempty"`
 	PostAttachCommand   interface{} `json:"postAttachCommand,omitempty"`
+	WaitFor             string      `json:"waitFor,omitempty"`
 }
 
 func Parse(filePath string) (*DevContainer, error) {
@@ -111,6 +121,42 @@ func (dc *DevContainer) GetPostAttachCommandArgs() []string {
 		return nil
 	}
 	return parseCommand(dc.PostAttachCommand)
+}
+
+func (dc *DevContainer) GetWaitFor() string {
+	if dc.WaitFor != "" {
+		return dc.WaitFor
+	}
+	return WaitForUpdateContentCommand
+}
+
+func (dc *DevContainer) ShouldWaitForCommand(commandType string) bool {
+	waitFor := dc.GetWaitFor()
+	
+	switch waitFor {
+	case WaitForInitializeCommand:
+		return commandType == WaitForInitializeCommand
+	case WaitForOnCreateCommand:
+		return commandType == WaitForInitializeCommand ||
+			commandType == WaitForOnCreateCommand
+	case WaitForUpdateContentCommand:
+		return commandType == WaitForInitializeCommand ||
+			commandType == WaitForOnCreateCommand ||
+			commandType == WaitForUpdateContentCommand
+	case WaitForPostCreateCommand:
+		return commandType == WaitForInitializeCommand ||
+			commandType == WaitForOnCreateCommand ||
+			commandType == WaitForUpdateContentCommand ||
+			commandType == WaitForPostCreateCommand
+	case WaitForPostStartCommand:
+		return commandType == WaitForInitializeCommand ||
+			commandType == WaitForOnCreateCommand ||
+			commandType == WaitForUpdateContentCommand ||
+			commandType == WaitForPostCreateCommand ||
+			commandType == WaitForPostStartCommand
+	default:
+		return false
+	}
 }
 
 func parseCommand(cmd interface{}) []string {

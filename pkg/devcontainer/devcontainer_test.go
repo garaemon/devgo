@@ -682,6 +682,159 @@ func TestGetPostAttachCommandArgs(t *testing.T) {
 	}
 }
 
+func TestDevContainer_GetWaitFor(t *testing.T) {
+	tests := []struct {
+		name     string
+		waitFor  string
+		expected string
+	}{
+		{
+			name:     "default value",
+			waitFor:  "",
+			expected: WaitForUpdateContentCommand,
+		},
+		{
+			name:     "initializeCommand",
+			waitFor:  WaitForInitializeCommand,
+			expected: WaitForInitializeCommand,
+		},
+		{
+			name:     "onCreateCommand",
+			waitFor:  WaitForOnCreateCommand,
+			expected: WaitForOnCreateCommand,
+		},
+		{
+			name:     "updateContentCommand",
+			waitFor:  WaitForUpdateContentCommand,
+			expected: WaitForUpdateContentCommand,
+		},
+		{
+			name:     "postCreateCommand",
+			waitFor:  WaitForPostCreateCommand,
+			expected: WaitForPostCreateCommand,
+		},
+		{
+			name:     "postStartCommand",
+			waitFor:  WaitForPostStartCommand,
+			expected: WaitForPostStartCommand,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dc := &DevContainer{WaitFor: tt.waitFor}
+			got := dc.GetWaitFor()
+			if got != tt.expected {
+				t.Errorf("GetWaitFor() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDevContainer_ShouldWaitForCommand(t *testing.T) {
+	tests := []struct {
+		name        string
+		waitFor     string
+		commandType string
+		expected    bool
+	}{
+		// waitFor = initializeCommand
+		{
+			name:        "waitFor initializeCommand, check initializeCommand",
+			waitFor:     WaitForInitializeCommand,
+			commandType: WaitForInitializeCommand,
+			expected:    true,
+		},
+		{
+			name:        "waitFor initializeCommand, check onCreateCommand",
+			waitFor:     WaitForInitializeCommand,
+			commandType: WaitForOnCreateCommand,
+			expected:    false,
+		},
+		// waitFor = onCreateCommand
+		{
+			name:        "waitFor onCreateCommand, check initializeCommand",
+			waitFor:     WaitForOnCreateCommand,
+			commandType: WaitForInitializeCommand,
+			expected:    true,
+		},
+		{
+			name:        "waitFor onCreateCommand, check onCreateCommand",
+			waitFor:     WaitForOnCreateCommand,
+			commandType: WaitForOnCreateCommand,
+			expected:    true,
+		},
+		{
+			name:        "waitFor onCreateCommand, check updateContentCommand",
+			waitFor:     WaitForOnCreateCommand,
+			commandType: WaitForUpdateContentCommand,
+			expected:    false,
+		},
+		// waitFor = updateContentCommand (default)
+		{
+			name:        "waitFor updateContentCommand, check onCreateCommand",
+			waitFor:     WaitForUpdateContentCommand,
+			commandType: WaitForOnCreateCommand,
+			expected:    true,
+		},
+		{
+			name:        "waitFor updateContentCommand, check updateContentCommand",
+			waitFor:     WaitForUpdateContentCommand,
+			commandType: WaitForUpdateContentCommand,
+			expected:    true,
+		},
+		{
+			name:        "waitFor updateContentCommand, check postCreateCommand",
+			waitFor:     WaitForUpdateContentCommand,
+			commandType: WaitForPostCreateCommand,
+			expected:    false,
+		},
+		// waitFor = postCreateCommand
+		{
+			name:        "waitFor postCreateCommand, check postCreateCommand",
+			waitFor:     WaitForPostCreateCommand,
+			commandType: WaitForPostCreateCommand,
+			expected:    true,
+		},
+		{
+			name:        "waitFor postCreateCommand, check postStartCommand",
+			waitFor:     WaitForPostCreateCommand,
+			commandType: WaitForPostStartCommand,
+			expected:    false,
+		},
+		// waitFor = postStartCommand
+		{
+			name:        "waitFor postStartCommand, check postStartCommand",
+			waitFor:     WaitForPostStartCommand,
+			commandType: WaitForPostStartCommand,
+			expected:    true,
+		},
+		{
+			name:        "waitFor postStartCommand, check postAttachCommand",
+			waitFor:     WaitForPostStartCommand,
+			commandType: "postAttachCommand",
+			expected:    false,
+		},
+		// Invalid waitFor value
+		{
+			name:        "invalid waitFor value",
+			waitFor:     "invalidCommand",
+			commandType: WaitForOnCreateCommand,
+			expected:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dc := &DevContainer{WaitFor: tt.waitFor}
+			got := dc.ShouldWaitForCommand(tt.commandType)
+			if got != tt.expected {
+				t.Errorf("ShouldWaitForCommand() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestParse_PostStartCommand(t *testing.T) {
 	dc, err := Parse("../../test/fixtures/post-start-command.json")
 	if err != nil {
@@ -704,5 +857,33 @@ func TestParse_PostStartCommand(t *testing.T) {
 		if args[i] != expected {
 			t.Errorf("Expected args[%d] = %q, got %q", i, expected, args[i])
 		}
+	}
+}
+
+func TestParse_WaitFor(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected string
+	}{
+		{
+			name:     "no waitFor specified",
+			dc:       DevContainer{},
+			expected: WaitForUpdateContentCommand,
+		},
+		{
+			name:     "waitFor postCreateCommand",
+			dc:       DevContainer{WaitFor: WaitForPostCreateCommand},
+			expected: WaitForPostCreateCommand,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.GetWaitFor()
+			if got != tt.expected {
+				t.Errorf("GetWaitFor() = %v, want %v", got, tt.expected)
+			}
+		})
 	}
 }
