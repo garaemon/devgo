@@ -30,12 +30,35 @@ A Go CLI tool that runs Docker containers based on devcontainer.json configurati
 
 ## Installation
 
+### Option 1: Install from GitHub (Recommended)
+
 ```bash
-# Build from source
+# Install the latest version directly from GitHub
+go install github.com/garaemon/devgo@latest
+```
+
+### Option 2: Build from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/garaemon/devgo.git
+cd devgo
+
+# Build the binary
 make build
 
 # Install to GOPATH/bin
 make install
+```
+
+### Verify Installation
+
+```bash
+# Check if devgo is installed correctly
+devgo --version
+
+# Show help
+devgo --help
 ```
 
 ## Quick Start
