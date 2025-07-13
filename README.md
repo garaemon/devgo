@@ -271,18 +271,3 @@ make dev
 make ci
 ```
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch with date prefix: `2024.01.15-feature-name`
-3. Make your changes following the project guidelines
-4. Run tests and linter: `make ci`
-5. Submit a pull request
-
-## License
-
-[Add your license information here]
-
-## Compatibility
-
-`devgo` provides high compatibility with the official DevContainer CLI, implementing 90% of its functionality. It serves as a lightweight, Go-based alternative suitable for CI/CD pipelines and resource-constrained environments.
