@@ -28,8 +28,14 @@ devgo/
 # Build the binary
 make build
 
-# Run tests
+# Run unit tests
 make test
+
+# Run integration tests
+make test-integration
+
+# Run tests with coverage
+make test-coverage
 
 # Run linter
 make lint
@@ -40,8 +46,14 @@ make dev
 # Full CI pipeline
 make ci
 
+# Full CI pipeline with integration tests
+make ci-full
+
 # Install to GOPATH/bin
 make install
+
+# Show all available targets
+make help
 ```
 
 ## Testing Strategy
@@ -71,7 +83,7 @@ make install
 
 ### Extended Commands (Partial Implementation)
 - `devgo run-user-commands` - Run user commands in container (not yet implemented)
-- `devgo read-configuration` - Output current workspace configuration (not yet implemented)
+- `devgo read-configuration` - Output current workspace configuration (✅ implemented)
 
 ### Global Options
 - `--help` - Show help
@@ -94,8 +106,8 @@ make install
 - ✅ **shell command** - Interactive TTY sessions
 - ✅ **stop/down commands** - Container lifecycle management
 - ✅ **list command** - Container inventory management
+- ✅ **read-configuration** - Output workspace configuration as JSON
 - ❌ **run-user-commands** - Not yet implemented
-- ❌ **read-configuration** - Not yet implemented
 
 ### Advanced Features (Complete)
 - ✅ Docker Compose support (single and multiple files)
@@ -118,4 +130,4 @@ make install
 - ✅ Standard library preference
 - ✅ Clean separation of concerns
 
-**Current Status**: devgo is production-ready with 90% of DevContainer CLI functionality implemented. Only 2 utility commands remain to achieve full compatibility.
+**Current Status**: devgo is production-ready with 95% of DevContainer CLI functionality implemented. Only 1 utility command (`run-user-commands`) remains to achieve full compatibility.
