@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -96,7 +97,7 @@ func runUpCommand(args []string) error {
 			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
 		}
 	}()
-	
+
 	ctx := context.Background()
 
 	if err := executeInitializeCommand(devContainer, workspaceDir); err != nil {
@@ -106,10 +107,13 @@ func runUpCommand(args []string) error {
 	return startContainerWithDocker(ctx, devContainer, containerName, workspaceDir, dockerClient)
 }
 
-
 func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string, dockerClient DockerClient) error {
+	if devContainer.HasDockerCompose() {
+		return startContainerWithDockerCompose(ctx, devContainer, containerName, workspaceDir)
+	}
+
 	if !devContainer.HasImage() {
-		return fmt.Errorf("devcontainer must specify an image")
+		return fmt.Errorf("devcontainer must specify an image or docker compose configuration")
 	}
 
 	// TODO: Add support for --container-name option similar to devcontainer-cli runArgs
@@ -304,7 +308,7 @@ func executeInitializeCommand(devContainer *devcontainer.DevContainer, workspace
 func (r *realDockerClient) ContainerExists(ctx context.Context, containerName string) (bool, error) {
 	filter := filters.NewArgs()
 	filter.Add("name", containerName)
-	
+
 	containers, err := r.client.ContainerList(ctx, container.ListOptions{
 		All:     true,
 		Filters: filter,
@@ -312,7 +316,7 @@ func (r *realDockerClient) ContainerExists(ctx context.Context, containerName st
 	if err != nil {
 		return false, fmt.Errorf("failed to list containers: %w", err)
 	}
-	
+
 	for _, c := range containers {
 		for _, name := range c.Names {
 			if strings.TrimPrefix(name, "/") == containerName {
@@ -327,14 +331,14 @@ func (r *realDockerClient) IsContainerRunning(ctx context.Context, containerName
 	filter := filters.NewArgs()
 	filter.Add("name", containerName)
 	filter.Add("status", "running")
-	
+
 	containers, err := r.client.ContainerList(ctx, container.ListOptions{
 		Filters: filter,
 	})
 	if err != nil {
 		return false, fmt.Errorf("failed to list running containers: %w", err)
 	}
-	
+
 	for _, c := range containers {
 		for _, name := range c.Names {
 			if strings.TrimPrefix(name, "/") == containerName {
@@ -368,7 +372,7 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 		constants.DevgoManagedLabel:   constants.DevgoManagedValue,
 		constants.DevgoWorkspaceLabel: args.WorkspaceDir,
 	}
-	
+
 	config := &container.Config{
 		Image:  args.Image,
 		Cmd:    []string{"sleep", "infinity"},
@@ -472,7 +476,7 @@ func executeLifecycleCommands(ctx context.Context, devContainer *devcontainer.De
 				}
 			}
 		}
-		
+
 		// Always execute postAttachCommand last
 		if err := executePostAttachCommand(ctx, devContainer, containerName, workspaceDir); err != nil {
 			fmt.Printf("Background postAttachCommand failed: %v\n", err)
@@ -480,4 +484,51 @@ func executeLifecycleCommands(ctx context.Context, devContainer *devcontainer.De
 	}()
 
 	return nil
+}
+
+func startContainerWithDockerCompose(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
+	if devContainer.GetService() == "" {
+		return fmt.Errorf("service name is required when using docker compose")
+	}
+
+	composeFiles := devContainer.GetDockerComposeFiles()
+	if len(composeFiles) == 0 {
+		return fmt.Errorf("no docker compose files specified")
+	}
+
+	// Build docker compose command arguments
+	var composeArgs []string
+	for _, file := range composeFiles {
+		composeArgs = append(composeArgs, "-f", filepath.Join(workspaceDir, file))
+	}
+
+	// Determine which services to run
+	runServices := devContainer.GetRunServices()
+	if len(runServices) == 0 {
+		runServices = []string{devContainer.GetService()}
+	}
+
+	// Check if services are already running
+	checkCmd := exec.Command("docker", append(append([]string{"compose"}, composeArgs...), "ps", "-q", devContainer.GetService())...)
+	checkCmd.Dir = workspaceDir
+	output, err := checkCmd.Output()
+	if err == nil && len(strings.TrimSpace(string(output))) > 0 {
+		fmt.Printf("Service '%s' is already running\n", devContainer.GetService())
+		return executeLifecycleCommands(ctx, devContainer, containerName, workspaceDir)
+	}
+
+	// Start docker compose services
+	upArgs := append(composeArgs, append([]string{"up", "-d"}, runServices...)...)
+	upCmd := exec.Command("docker", append([]string{"compose"}, upArgs...)...)
+	upCmd.Dir = workspaceDir
+	upCmd.Stdout = os.Stdout
+	upCmd.Stderr = os.Stderr
+
+	fmt.Printf("Starting docker compose services: %s\n", strings.Join(runServices, ", "))
+	if err := upCmd.Run(); err != nil {
+		return fmt.Errorf("failed to start docker compose services: %w", err)
+	}
+
+	fmt.Printf("Docker compose services started successfully\n")
+	return executeLifecycleCommands(ctx, devContainer, containerName, workspaceDir)
 }

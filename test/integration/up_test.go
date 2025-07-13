@@ -25,7 +25,7 @@ func TestUpCommandIntegration(t *testing.T) {
 
 	// Create a temporary workspace for testing
 	tempDir := t.TempDir()
-	
+
 	// Create .devcontainer directory
 	devcontainerDir := filepath.Join(tempDir, ".devcontainer")
 	if err := os.MkdirAll(devcontainerDir, 0755); err != nil {
@@ -61,7 +61,7 @@ func TestUpCommandIntegration(t *testing.T) {
 			name:        "successful up command",
 			workingDir:  tempDir,
 			expectError: false,
-			cleanup:     func() { 
+			cleanup: func() {
 				containerName := "devgo-" + filepath.Base(tempDir)
 				cleanupContainer(t, containerName)
 			},
@@ -73,7 +73,7 @@ func TestUpCommandIntegration(t *testing.T) {
 			// Pre-cleanup any existing containers
 			containerName := "devgo-" + filepath.Base(tt.workingDir)
 			cleanupContainer(t, containerName)
-			
+
 			// Ensure cleanup happens
 			if tt.cleanup != nil {
 				defer tt.cleanup()
@@ -114,13 +114,13 @@ func TestUpCommandIntegration(t *testing.T) {
 
 			// Verify container was created and is running
 			t.Logf("Looking for container: %s", containerName)
-			
+
 			if !isContainerRunning(t, containerName) {
 				// List all containers for debugging
 				listCmd := exec.Command("docker", "ps", "-a")
 				listOutput, _ := listCmd.Output()
 				t.Logf("All containers: %s", string(listOutput))
-				
+
 				t.Errorf("Container %s is not running after up command", containerName)
 				return
 			}
@@ -143,7 +143,7 @@ func TestUpCommandWithExistingContainer(t *testing.T) {
 
 	tempDir := t.TempDir()
 	setupDevcontainer(t, tempDir, "existing-test-container")
-	
+
 	devgoBinary := buildDevgoBinary(t)
 	defer os.Remove(devgoBinary)
 
@@ -216,32 +216,32 @@ func isDockerAvailable() bool {
 
 func buildDevgoBinary(t *testing.T) string {
 	t.Helper()
-	
+
 	// Get project root (parent of test directory)
 	testDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Failed to get current directory: %v", err)
 	}
-	
+
 	projectRoot := filepath.Dir(filepath.Dir(testDir))
-	
+
 	// Build binary in temp location
 	tmpBinary := filepath.Join(t.TempDir(), "devgo-integration-test")
-	
+
 	cmd := exec.Command("go", "build", "-o", tmpBinary, ".")
 	cmd.Dir = projectRoot
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Failed to build devgo binary: %v. Output: %s", err, string(output))
 	}
-	
+
 	return tmpBinary
 }
 
 func setupDevcontainer(t *testing.T, tempDir, containerName string) {
 	t.Helper()
-	
+
 	devcontainerDir := filepath.Join(tempDir, ".devcontainer")
 	if err := os.MkdirAll(devcontainerDir, 0755); err != nil {
 		t.Fatalf("Failed to create .devcontainer directory: %v", err)
@@ -264,20 +264,20 @@ func setupDevcontainer(t *testing.T, tempDir, containerName string) {
 
 func isContainerRunning(t *testing.T, containerName string) bool {
 	t.Helper()
-	
+
 	cmd := exec.Command("docker", "ps", "--filter", fmt.Sprintf("name=%s", containerName), "--format", "{{.Names}}")
 	output, err := cmd.Output()
 	if err != nil {
 		t.Logf("Failed to check if container is running: %v", err)
 		return false
 	}
-	
+
 	return strings.Contains(string(output), containerName)
 }
 
 func verifyContainerProperties(t *testing.T, containerName, workspaceDir string) {
 	t.Helper()
-	
+
 	// Check if container has the correct labels
 	cmd := exec.Command("docker", "inspect", containerName, "--format", "{{.Config.Labels}}")
 	output, err := cmd.Output()
@@ -285,12 +285,12 @@ func verifyContainerProperties(t *testing.T, containerName, workspaceDir string)
 		t.Errorf("Failed to inspect container: %v", err)
 		return
 	}
-	
+
 	labels := string(output)
 	if !strings.Contains(labels, "devgo.managed:true") {
 		t.Errorf("Container missing devgo.managed label. Labels: %s", labels)
 	}
-	
+
 	// Check if workspace is mounted correctly
 	cmd = exec.Command("docker", "inspect", containerName, "--format", "{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}")
 	output, err = cmd.Output()
@@ -298,7 +298,7 @@ func verifyContainerProperties(t *testing.T, containerName, workspaceDir string)
 		t.Errorf("Failed to inspect container mounts: %v", err)
 		return
 	}
-	
+
 	mounts := string(output)
 	expectedMount := fmt.Sprintf("%s:/workspace", workspaceDir)
 	if !strings.Contains(mounts, expectedMount) {
@@ -308,7 +308,7 @@ func verifyContainerProperties(t *testing.T, containerName, workspaceDir string)
 
 func stopContainer(t *testing.T, containerName string) {
 	t.Helper()
-	
+
 	cmd := exec.Command("docker", "stop", containerName)
 	if err := cmd.Run(); err != nil {
 		t.Logf("Failed to stop container %s: %v", containerName, err)
@@ -317,11 +317,11 @@ func stopContainer(t *testing.T, containerName string) {
 
 func cleanupContainer(t *testing.T, containerName string) {
 	t.Helper()
-	
+
 	// Stop and remove container
 	stopCmd := exec.Command("docker", "stop", containerName)
 	stopCmd.Run() // Ignore errors - container might not be running
-	
+
 	removeCmd := exec.Command("docker", "rm", containerName)
 	removeCmd.Run() // Ignore errors - container might not exist
 }
@@ -360,9 +360,9 @@ func TestOnCreateCommandIntegration(t *testing.T) {
   "workspaceFolder": "/workspace",
   "onCreateCommand": ["sh", "-c", "mkdir -p /workspace/oncreate-dir && echo 'hello from oncreate' > /workspace/oncreate-dir/message.txt"]
 }`,
-			expectedDirs:  []string{"/workspace/oncreate-dir"},
-			expectedFiles: []string{"/workspace/oncreate-dir/message.txt"},
-			verifyCommand: []string{"cat", "/workspace/oncreate-dir/message.txt"},
+			expectedDirs:   []string{"/workspace/oncreate-dir"},
+			expectedFiles:  []string{"/workspace/oncreate-dir/message.txt"},
+			verifyCommand:  []string{"cat", "/workspace/oncreate-dir/message.txt"},
 			expectInOutput: []string{"hello from oncreate"},
 		},
 		{
@@ -372,8 +372,8 @@ func TestOnCreateCommandIntegration(t *testing.T) {
   "workspaceFolder": "/workspace", 
   "onCreateCommand": "apk add --no-cache curl && curl --version > /workspace/curl-version.txt"
 }`,
-			expectedFiles: []string{"/workspace/curl-version.txt"},
-			verifyCommand: []string{"cat", "/workspace/curl-version.txt"},
+			expectedFiles:  []string{"/workspace/curl-version.txt"},
+			verifyCommand:  []string{"cat", "/workspace/curl-version.txt"},
 			expectInOutput: []string{"curl"},
 		},
 		{
@@ -385,8 +385,8 @@ func TestOnCreateCommandIntegration(t *testing.T) {
   "postCreateCommand": "echo 'step2: postCreateCommand' >> /workspace/execution-order.txt",
   "waitFor": "postCreateCommand"
 }`,
-			expectedFiles: []string{"/workspace/execution-order.txt"},
-			verifyCommand: []string{"cat", "/workspace/execution-order.txt"},
+			expectedFiles:  []string{"/workspace/execution-order.txt"},
+			verifyCommand:  []string{"cat", "/workspace/execution-order.txt"},
 			expectInOutput: []string{"step1: onCreateCommand", "step2: postCreateCommand"},
 		},
 	}
@@ -395,10 +395,10 @@ func TestOnCreateCommandIntegration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create temporary workspace
 			tempDir := t.TempDir()
-			
+
 			// Setup devcontainer with onCreateCommand
 			setupDevcontainerWithContent(t, tempDir, tt.devcontainerContent)
-			
+
 			// Build devgo binary
 			devgoBinary := buildDevgoBinary(t)
 			defer os.Remove(devgoBinary)
@@ -482,16 +482,16 @@ func TestOnCreateCommandFailure(t *testing.T) {
 	}
 
 	tempDir := t.TempDir()
-	
+
 	// Create devcontainer with failing onCreateCommand
 	devcontainerContent := `{
   "image": "alpine:3.19",
   "workspaceFolder": "/workspace",
   "onCreateCommand": "exit 1"
 }`
-	
+
 	setupDevcontainerWithContent(t, tempDir, devcontainerContent)
-	
+
 	devgoBinary := buildDevgoBinary(t)
 	defer os.Remove(devgoBinary)
 
@@ -519,7 +519,7 @@ func TestOnCreateCommandFailure(t *testing.T) {
 
 	cmd := exec.CommandContext(ctx, devgoBinary, "up")
 	output, err := cmd.CombinedOutput()
-	
+
 	// Current implementation continues even if onCreateCommand fails
 	if err != nil {
 		t.Fatalf("devgo up failed: %v. Output: %s", err, string(output))
@@ -537,7 +537,7 @@ func TestOnCreateCommandFailure(t *testing.T) {
 
 func setupDevcontainerWithContent(t *testing.T, tempDir, content string) {
 	t.Helper()
-	
+
 	devcontainerDir := filepath.Join(tempDir, ".devcontainer")
 	if err := os.MkdirAll(devcontainerDir, 0755); err != nil {
 		t.Fatalf("Failed to create .devcontainer directory: %v", err)
@@ -551,7 +551,7 @@ func setupDevcontainerWithContent(t *testing.T, tempDir, content string) {
 
 func containerPathExists(t *testing.T, containerName, path string, isDir bool) bool {
 	t.Helper()
-	
+
 	// Use appropriate test command for file vs directory
 	var testCmd []string
 	if isDir {
@@ -562,29 +562,29 @@ func containerPathExists(t *testing.T, containerName, path string, isDir bool) b
 
 	cmd := exec.Command("docker", "exec", containerName)
 	cmd.Args = append(cmd.Args, testCmd...)
-	
+
 	err := cmd.Run()
 	return err == nil
 }
 
 func runCommandInContainer(t *testing.T, containerName string, command []string) string {
 	t.Helper()
-	
+
 	cmd := exec.Command("docker", "exec", containerName)
 	cmd.Args = append(cmd.Args, command...)
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		t.Logf("Command failed in container: %v", err)
 		return ""
 	}
-	
+
 	return string(output)
 }
 
 func cleanupContainerFiles(t *testing.T, containerName, workspaceDir string) {
 	t.Helper()
-	
+
 	// Only cleanup if container exists and is running
 	if !isContainerRunning(t, containerName) {
 		// Check if container exists but is stopped
@@ -594,7 +594,7 @@ func cleanupContainerFiles(t *testing.T, containerName, workspaceDir string) {
 			return // Container doesn't exist
 		}
 	}
-	
+
 	// Remove files that may have been created by onCreateCommand with root permissions
 	// This prevents permission errors during test cleanup
 	cleanupCommands := [][]string{
@@ -603,7 +603,7 @@ func cleanupContainerFiles(t *testing.T, containerName, workspaceDir string) {
 		{"rm", "-f", "/workspace/curl-version.txt"},
 		{"rm", "-f", "/workspace/execution-order.txt"},
 	}
-	
+
 	for _, cmdArgs := range cleanupCommands {
 		cmd := exec.Command("docker", "exec", containerName)
 		cmd.Args = append(cmd.Args, cmdArgs...)

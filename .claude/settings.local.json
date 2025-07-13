@@ -5,7 +5,9 @@
       "Bash(go:*)",
       "Bash(gh run list:*)",
       "Bash(gh run view:*)",
-      "Bash(gh workflow:*)"
+      "Bash(gh workflow:*)",
+      "Bash(rg:*)",
+      "WebFetch(domain:containers.dev)"
     ],
     "deny": []
   }

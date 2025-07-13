@@ -109,7 +109,7 @@ func TestExecuteInteractiveShell(t *testing.T) {
 				// For successful execution, provide a proper mock response
 				buf := &bytes.Buffer{}
 				buf.WriteString("root@abc123:/workspace# ")
-				
+
 				mockResp = types.HijackedResponse{
 					Conn:   &mockConn{Buffer: &bytes.Buffer{}},
 					Reader: bufio.NewReader(buf),
@@ -149,12 +149,12 @@ func TestExecuteInteractiveShell(t *testing.T) {
 func TestRunShellCommand_NoArgs(t *testing.T) {
 	// Shell command should not require arguments (unlike exec)
 	err := runShellCommand([]string{})
-	
+
 	// Should fail due to missing devcontainer config, not due to argument validation
 	if err != nil && strings.Contains(err.Error(), "requires at least one argument") {
 		t.Errorf("shell command should not require arguments, got: %v", err)
 	}
-	
+
 	// Should fail with devcontainer config error instead
 	if err == nil {
 		t.Errorf("expected error due to missing devcontainer config, got nil")
@@ -227,7 +227,7 @@ func TestShellCommandExecOptions(t *testing.T) {
 	if !capturedExecOptions.AttachStderr {
 		t.Errorf("expected AttachStderr to be true for shell command")
 	}
-	
+
 	// Verify shell command uses /bin/bash --login with custom prompt in environment
 	expectedCmd := []string{"/bin/bash", "--login"}
 	if len(capturedExecOptions.Cmd) != len(expectedCmd) {
@@ -239,7 +239,7 @@ func TestShellCommandExecOptions(t *testing.T) {
 			}
 		}
 	}
-	
+
 	// Verify custom prompt is set in environment
 	if len(capturedExecOptions.Env) == 0 {
 		t.Errorf("expected environment variables to be set for custom prompt")
@@ -266,12 +266,12 @@ func TestShellCommandExecOptions(t *testing.T) {
 func TestShellCommandContainerNameLogic(t *testing.T) {
 	// Test that shell command follows the same container naming logic as other commands
 	workspaceDir := "/test/workspace"
-	
+
 	tests := []struct {
-		name           string
-		devContainer   *devcontainer.DevContainer
-		containerName  string
-		expectedName   string
+		name          string
+		devContainer  *devcontainer.DevContainer
+		containerName string
+		expectedName  string
 	}{
 		{
 			name: "uses devcontainer name",

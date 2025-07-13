@@ -10,11 +10,11 @@ import (
 
 // mockDownDockerClient implements a mock Docker client for down command testing
 type mockDownDockerClient struct {
-	containers      []container.Summary
-	listError       error
-	stopError       error
-	removeError     error
-	closeError      error
+	containers        []container.Summary
+	listError         error
+	stopError         error
+	removeError       error
+	closeError        error
 	stoppedContainers []string
 	removedContainers []string
 }
@@ -60,7 +60,7 @@ func TestRunDownCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := runDownCommand(tt.args)
-			
+
 			// The command may succeed if devcontainer.json exists (locally)
 			// or fail if devcontainer.json doesn't exist (CI environment)
 			// Both are acceptable behaviors for this test
@@ -77,16 +77,16 @@ func TestRunDownCommand(t *testing.T) {
 
 func TestStopAndRemoveContainer(t *testing.T) {
 	tests := []struct {
-		name              string
-		containerName     string
-		containers        []container.Summary
-		listError         error
-		stopError         error
-		removeError       error
-		expectError       bool
-		expectedStopped   []string
-		expectedRemoved   []string
-		errorContains     string
+		name            string
+		containerName   string
+		containers      []container.Summary
+		listError       error
+		stopError       error
+		removeError     error
+		expectError     bool
+		expectedStopped []string
+		expectedRemoved []string
+		errorContains   string
 	}{
 		{
 			name:          "container does not exist",

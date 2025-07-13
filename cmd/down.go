@@ -24,7 +24,7 @@ func runDownCommand(args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to find devcontainer config: %w", err)
 	}
-	
+
 	workspaceDir := determineWorkspaceFolder(devcontainerPath)
 
 	devContainer, err := devcontainer.Parse(devcontainerPath)
@@ -33,7 +33,7 @@ func runDownCommand(args []string) error {
 	}
 
 	containerName := determineContainerName(devContainer, workspaceDir)
-	
+
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)
@@ -43,7 +43,7 @@ func runDownCommand(args []string) error {
 			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
 		}
 	}()
-	
+
 	ctx := context.Background()
 	return stopAndRemoveContainer(ctx, cli, containerName)
 }
@@ -52,7 +52,7 @@ func stopAndRemoveContainer(ctx context.Context, cli DownDockerClient, container
 	// Check if container exists
 	filter := filters.NewArgs()
 	filter.Add("name", containerName)
-	
+
 	containers, err := cli.ContainerList(ctx, container.ListOptions{
 		All:     true,
 		Filters: filter,
@@ -60,11 +60,11 @@ func stopAndRemoveContainer(ctx context.Context, cli DownDockerClient, container
 	if err != nil {
 		return fmt.Errorf("failed to list containers: %w", err)
 	}
-	
+
 	var found bool
 	var containerID string
 	var isRunning bool
-	
+
 	for _, c := range containers {
 		for _, name := range c.Names {
 			if strings.TrimPrefix(name, "/") == containerName {
@@ -78,12 +78,12 @@ func stopAndRemoveContainer(ctx context.Context, cli DownDockerClient, container
 			break
 		}
 	}
-	
+
 	if !found {
 		fmt.Printf("Container '%s' does not exist\n", containerName)
 		return nil
 	}
-	
+
 	// Stop container if it's running
 	if isRunning {
 		fmt.Printf("Stopping container '%s'\n", containerName)
@@ -93,14 +93,14 @@ func stopAndRemoveContainer(ctx context.Context, cli DownDockerClient, container
 		}
 		fmt.Printf("Container '%s' stopped\n", containerName)
 	}
-	
+
 	// Remove container
 	fmt.Printf("Removing container '%s'\n", containerName)
 	err = cli.ContainerRemove(ctx, containerID, container.RemoveOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to remove container '%s': %w", containerName, err)
 	}
-	
+
 	fmt.Printf("Container '%s' removed successfully\n", containerName)
 	return nil
 }

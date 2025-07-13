@@ -18,7 +18,7 @@ func TestRunStopCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := runStopCommand(tt.args)
-			
+
 			// The command may succeed if devcontainer.json exists (locally)
 			// or fail if devcontainer.json doesn't exist (CI environment)
 			// Both are acceptable behaviors for this test
