@@ -172,23 +172,7 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 		return err
 	}
 
-	if err := executeOnCreateCommand(ctx, devContainer, containerName, workspaceDir); err != nil {
-		return err
-	}
-
-	if err := executeUpdateContentCommand(ctx, devContainer, containerName, workspaceDir); err != nil {
-		return err
-	}
-
-	if err := executePostCreateCommand(ctx, devContainer, containerName, workspaceDir); err != nil {
-		return err
-	}
-
-	if err := executePostStartCommand(ctx, devContainer, containerName, workspaceDir); err != nil {
-		return err
-	}
-
-	return executePostAttachCommand(ctx, devContainer, containerName, workspaceDir)
+	return executeLifecycleCommands(ctx, devContainer, containerName, workspaceDir)
 }
 
 func executeOnCreateCommand(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
@@ -452,4 +436,48 @@ func (r *realDockerClient) PullImage(ctx context.Context, imageName string) erro
 
 func (r *realDockerClient) Close() error {
 	return r.client.Close()
+}
+
+func executeLifecycleCommands(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
+	commands := []struct {
+		commandType string
+		executor    func(context.Context, *devcontainer.DevContainer, string, string) error
+	}{
+		{devcontainer.WaitForOnCreateCommand, executeOnCreateCommand},
+		{devcontainer.WaitForUpdateContentCommand, executeUpdateContentCommand},
+		{devcontainer.WaitForPostCreateCommand, executePostCreateCommand},
+		{devcontainer.WaitForPostStartCommand, executePostStartCommand},
+	}
+
+	waitFor := devContainer.GetWaitFor()
+	fmt.Printf("Executing lifecycle commands up to: %s\n", waitFor)
+
+	// Execute commands synchronously until waitFor
+	for _, cmd := range commands {
+		if devContainer.ShouldWaitForCommand(cmd.commandType) {
+			if err := cmd.executor(ctx, devContainer, containerName, workspaceDir); err != nil {
+				return fmt.Errorf("failed to execute %s: %w", cmd.commandType, err)
+			}
+		}
+	}
+
+	fmt.Printf("Container is ready for use (waitFor: %s completed)\n", waitFor)
+
+	// Execute remaining commands asynchronously
+	go func() {
+		for _, cmd := range commands {
+			if !devContainer.ShouldWaitForCommand(cmd.commandType) {
+				if err := cmd.executor(ctx, devContainer, containerName, workspaceDir); err != nil {
+					fmt.Printf("Background command %s failed: %v\n", cmd.commandType, err)
+				}
+			}
+		}
+		
+		// Always execute postAttachCommand last
+		if err := executePostAttachCommand(ctx, devContainer, containerName, workspaceDir); err != nil {
+			fmt.Printf("Background postAttachCommand failed: %v\n", err)
+		}
+	}()
+
+	return nil
 }
