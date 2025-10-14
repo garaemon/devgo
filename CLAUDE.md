@@ -81,8 +81,8 @@ make help
 - `devgo shell` - Start an interactive shell session in the dev container
 - `devgo list` - List all devgo-managed containers
 
-### Extended Commands (Partial Implementation)
-- `devgo run-user-commands` - Run user commands in container (not yet implemented)
+### Extended Commands (Fully Implemented)
+- `devgo run-user-commands` - Run user commands in container (✅ implemented)
 - `devgo read-configuration` - Output current workspace configuration (✅ implemented)
 
 ### Global Options
@@ -107,7 +107,7 @@ make help
 - ✅ **stop/down commands** - Container lifecycle management
 - ✅ **list command** - Container inventory management
 - ✅ **read-configuration** - Output workspace configuration as JSON
-- ❌ **run-user-commands** - Not yet implemented
+- ✅ **run-user-commands** - Run lifecycle commands in existing container
 
 ### Advanced Features (Complete)
 - ✅ Docker Compose support (single and multiple files)
@@ -130,4 +130,4 @@ make help
 - ✅ Standard library preference
 - ✅ Clean separation of concerns
 
-**Current Status**: devgo is production-ready with 95% of DevContainer CLI functionality implemented. Only 1 utility command (`run-user-commands`) remains to achieve full compatibility.
+**Current Status**: devgo is production-ready with 100% of DevContainer CLI core functionality implemented. All essential commands are fully functional and tested.
