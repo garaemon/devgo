@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/garaemon/devgo/pkg/constants"
 	"github.com/garaemon/devgo/pkg/devcontainer"
+	"github.com/garaemon/devgo/pkg/sshagent"
 	"github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -373,6 +374,27 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 		constants.DevgoWorkspaceLabel: args.WorkspaceDir,
 	}
 
+	// Create host configuration with volume mounts
+	binds := []string{fmt.Sprintf("%s:%s", args.WorkspaceDir, args.WorkspaceFolder)}
+
+	// Add SSH agent forwarding if available
+	if sshagent.IsAvailable() {
+		hostSocket, err := sshagent.GetHostSocket()
+		if err == nil {
+			mount := sshagent.CreateMount(hostSocket)
+			binds = append(binds, fmt.Sprintf("%s:%s", mount.Source, mount.Target))
+
+			// Add SSH_AUTH_SOCK environment variable
+			sshEnv := sshagent.GetContainerEnv()
+			for key, value := range sshEnv {
+				env = append(env, fmt.Sprintf("%s=%s", key, value))
+			}
+
+			fmt.Printf("SSH agent forwarding enabled: %s -> %s\n",
+				hostSocket, mount.Target)
+		}
+	}
+
 	config := &container.Config{
 		Image:  args.Image,
 		Cmd:    []string{"sleep", "infinity"},
@@ -380,9 +402,8 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 		Labels: labels,
 	}
 
-	// Create host configuration with volume mounts
 	hostConfig := &container.HostConfig{
-		Binds: []string{fmt.Sprintf("%s:%s", args.WorkspaceDir, args.WorkspaceFolder)},
+		Binds: binds,
 	}
 
 	// Create the container
