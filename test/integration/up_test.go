@@ -48,7 +48,10 @@ func TestUpCommandIntegration(t *testing.T) {
 
 	// Build devgo binary
 	devgoBinary := buildDevgoBinary(t)
-	defer os.Remove(devgoBinary)
+	// Only remove if it's a temporary binary (not a Bazel pre-built binary)
+	if !strings.Contains(devgoBinary, "bazel") {
+		defer os.Remove(devgoBinary)
+	}
 
 	// Test cases
 	tests := []struct {
@@ -145,7 +148,10 @@ func TestUpCommandWithExistingContainer(t *testing.T) {
 	setupDevcontainer(t, tempDir, "existing-test-container")
 
 	devgoBinary := buildDevgoBinary(t)
-	defer os.Remove(devgoBinary)
+	// Only remove if it's a temporary binary (not a Bazel pre-built binary)
+	if !strings.Contains(devgoBinary, "bazel") {
+		defer os.Remove(devgoBinary)
+	}
 
 	containerName := "devgo-" + filepath.Base(tempDir)
 	// Clean up any existing containers first
@@ -428,7 +434,10 @@ func TestOnCreateCommandIntegration(t *testing.T) {
 
 			// Build devgo binary
 			devgoBinary := buildDevgoBinary(t)
-			defer os.Remove(devgoBinary)
+			// Only remove if it's a temporary binary (not a Bazel pre-built binary)
+			if !strings.Contains(devgoBinary, "bazel") {
+				defer os.Remove(devgoBinary)
+			}
 
 			containerName := "devgo-" + filepath.Base(tempDir)
 			cleanupContainer(t, containerName)
@@ -520,7 +529,10 @@ func TestOnCreateCommandFailure(t *testing.T) {
 	setupDevcontainerWithContent(t, tempDir, devcontainerContent)
 
 	devgoBinary := buildDevgoBinary(t)
-	defer os.Remove(devgoBinary)
+	// Only remove if it's a temporary binary (not a Bazel pre-built binary)
+	if !strings.Contains(devgoBinary, "bazel") {
+		defer os.Remove(devgoBinary)
+	}
 
 	containerName := "devgo-" + filepath.Base(tempDir)
 	cleanupContainer(t, containerName)

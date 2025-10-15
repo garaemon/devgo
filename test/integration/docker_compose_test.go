@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -128,7 +129,10 @@ services:
 
 	// Build devgo binary
 	devgoBinary := buildDevgoBinary(t)
-	defer os.Remove(devgoBinary)
+	// Only remove if it's a temporary binary (not a Bazel pre-built binary)
+	if !strings.Contains(devgoBinary, "bazel") {
+		defer os.Remove(devgoBinary)
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -267,7 +271,10 @@ services:
 
 	// Build devgo binary
 	devgoBinary := buildDevgoBinary(t)
-	defer os.Remove(devgoBinary)
+	// Only remove if it's a temporary binary (not a Bazel pre-built binary)
+	if !strings.Contains(devgoBinary, "bazel") {
+		defer os.Remove(devgoBinary)
+	}
 
 	// Pre-cleanup any existing containers
 	cleanupDockerCompose(t, tempDir)

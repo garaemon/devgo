@@ -92,7 +92,10 @@ func TestInitializeCommandIntegration(t *testing.T) {
 
 			// Build devgo binary
 			devgoBinary := buildDevgoBinary(t)
-			defer os.Remove(devgoBinary)
+			// Only remove if it's a temporary binary (not a Bazel pre-built binary)
+			if !strings.Contains(devgoBinary, "bazel") {
+				defer os.Remove(devgoBinary)
+			}
 
 			// Pre-cleanup any existing containers
 			containerName := "devgo-" + filepath.Base(tempDir)
