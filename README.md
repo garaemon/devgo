@@ -277,3 +277,106 @@ golangci-lint run
 bazel run //:gazelle-update-repos
 ```
 
+## Maintenance
+
+### Updating Go Dependencies
+
+When you add, remove, or update Go dependencies in `go.mod`, you need to sync them with Bazel:
+
+```bash
+# 1. Update go.mod and go.sum
+go get github.com/example/package@v1.2.3
+
+# 2. Run go mod tidy
+go mod tidy
+
+# 3. Update Bazel's deps.bzl from go.mod
+bazel run //:gazelle-update-repos
+
+# 4. Verify the build still works
+bazel build //...
+bazel test //...
+```
+
+### Adding New Go Files or Packages
+
+When you add new `.go` files or create new packages, update the BUILD files:
+
+```bash
+# Option 1: Update all BUILD files automatically (recommended)
+bazel run //:gazelle
+
+# Option 2: Update specific package
+bazel run //:gazelle -- update pkg/newpackage
+
+# After updating, test your changes
+bazel test //...
+```
+
+### Updating Bazel Version
+
+The Bazel version is pinned in `.bazelversion`:
+
+```bash
+# Edit .bazelversion with the desired version
+echo "7.5.0" > .bazelversion
+
+# Test with the new version
+bazel build //...
+bazel test //...
+```
+
+### Updating Bazel Rules (rules_go, gazelle, etc.)
+
+To update Bazel rules, edit `WORKSPACE`:
+
+```python
+# Find the current rules_go version
+http_archive(
+    name = "io_bazel_rules_go",
+    sha256 = "...",
+    urls = [
+        "https://github.com/bazelbuild/rules_go/releases/download/v0.XX.X/rules_go-v0.XX.X.zip",
+    ],
+)
+```
+
+Steps:
+1. Check for new versions at https://github.com/bazelbuild/rules_go/releases
+2. Update the version, URLs, and sha256 in `WORKSPACE`
+3. Update gazelle similarly if needed
+4. Test thoroughly: `bazel test //...`
+
+### Regenerating All Bazel Build Files
+
+If you need to completely regenerate BUILD files:
+
+```bash
+# This will update all BUILD.bazel files based on your Go code
+bazel run //:gazelle
+
+# If you have issues, try cleaning first
+bazel clean --expunge
+bazel run //:gazelle
+bazel build //...
+```
+
+### Common Maintenance Tasks
+
+```bash
+# Clean Bazel cache (if you have build issues)
+bazel clean
+
+# Complete clean (removes all Bazel files)
+bazel clean --expunge
+
+# Check for issues with external dependencies
+bazel sync
+
+# Run all tests with verbose output
+bazel test --test_output=all //...
+
+# Build everything
+bazel build //...
+```
+
