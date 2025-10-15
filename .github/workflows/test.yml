@@ -34,12 +34,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-bazel-
 
-    - name: Run tests with coverage
+    - name: Run all tests (unit + integration)
       run: bazel test --test_output=errors --test_arg=-test.v //...
 
     - name: Build
       run: bazel build //:devgo
-      
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
@@ -48,43 +48,10 @@ jobs:
         flags: unittests
         name: codecov-umbrella
         fail_ci_if_error: false
-        
+
     - name: Run basic smoke test
       run: |
         bazel-bin/devgo_/devgo --help
-
-  integration:
-    runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        go-version: ['1.21', '1.22', '1.23', '1.24']
-        
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ matrix.go-version }}
-
-    - name: Setup Bazelisk
-      uses: bazelbuild/setup-bazelisk@v3
-
-    - name: Mount bazel cache
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cache/bazel
-        key: ${{ runner.os }}-bazel-${{ hashFiles('**/*.bazel', '**/*.bzl', 'WORKSPACE', 'go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-bazel-
-
-    - name: Build
-      run: bazel build //:devgo
-
-    - name: Run integration tests
-      run: bazel test //test/integration:integration_test --test_output=errors --test_timeout=300
         
   lint:
     runs-on: ubuntu-latest
