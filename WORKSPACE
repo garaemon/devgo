@@ -2,20 +2,6 @@ workspace(name = "com_github_garaemon_devgo")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-# C++ rules (required for Bazel 8+)
-http_archive(
-    name = "rules_cc",
-    sha256 = "8dcd63392f0bb48adf74f413a9f39ba0fedcb8f99bf085a3b450f06d171dbb6d",
-    strip_prefix = "rules_cc-0.2.4",
-    urls = [
-        "https://github.com/bazelbuild/rules_cc/releases/download/0.2.4/rules_cc-0.2.4.tar.gz",
-    ],
-)
-
-load("@rules_cc//cc:repositories.bzl", "rules_cc_dependencies", "rules_cc_toolchains")
-rules_cc_dependencies()
-rules_cc_toolchains()
-
 # Go rules
 http_archive(
     name = "io_bazel_rules_go",

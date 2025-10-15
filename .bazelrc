@@ -1,6 +1,3 @@
-# Enable WORKSPACE file (required for Bazel 8+)
-common --enable_workspace
-
 # Show test output on failure
 test --test_output=errors
 
