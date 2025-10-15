@@ -45,10 +45,11 @@ git clone https://github.com/garaemon/devgo.git
 cd devgo
 
 # Build the binary
-make build
+bazel build //:devgo
 
-# Install to GOPATH/bin
-make install
+# The binary will be at bazel-bin/devgo_/devgo
+# You can copy it to your PATH
+sudo cp bazel-bin/devgo_/devgo /usr/local/bin/devgo
 ```
 
 ### Verify Installation
@@ -258,16 +259,21 @@ Options:
 ## Development
 
 ```bash
-# Run tests
-make test
+# Build the project
+bazel build //:devgo
 
-# Run linter
-make lint
+# Run all tests
+bazel test //...
 
-# Development cycle
-make dev
+# Run specific package tests
+bazel test //cmd:all
+bazel test //pkg/config:config_test
+bazel test //pkg/devcontainer:devcontainer_test
 
-# Full CI pipeline
-make ci
+# Run linter (you need to set up golangci-lint separately)
+golangci-lint run
+
+# Update dependencies from go.mod
+bazel run //:gazelle-update-repos
 ```
 

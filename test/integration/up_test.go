@@ -217,6 +217,27 @@ func isDockerAvailable() bool {
 func buildDevgoBinary(t *testing.T) string {
 	t.Helper()
 
+	// Check if running under Bazel (use TEST_SRCDIR)
+	if testSrcDir := os.Getenv("TEST_SRCDIR"); testSrcDir != "" {
+		// Under Bazel test, use the pre-built binary from data dependencies
+		bazelBinary := filepath.Join(testSrcDir, "_main", "devgo_", "devgo")
+		if stat, statErr := os.Stat(bazelBinary); statErr == nil {
+			if stat.Mode()&0111 != 0 {
+				return bazelBinary
+			}
+		}
+	}
+
+	// Check RUNFILES_DIR as well
+	if runfiles := os.Getenv("RUNFILES_DIR"); runfiles != "" {
+		bazelBinary := filepath.Join(runfiles, "_main", "devgo_", "devgo")
+		if stat, statErr := os.Stat(bazelBinary); statErr == nil {
+			if stat.Mode()&0111 != 0 {
+				return bazelBinary
+			}
+		}
+	}
+
 	// Get project root (parent of test directory)
 	testDir, err := os.Getwd()
 	if err != nil {
@@ -225,7 +246,13 @@ func buildDevgoBinary(t *testing.T) string {
 
 	projectRoot := filepath.Dir(filepath.Dir(testDir))
 
-	// Build binary in temp location
+	// Try to use bazel-bin if available (for local bazel test)
+	bazelBin := filepath.Join(projectRoot, "bazel-bin", "devgo_", "devgo")
+	if _, err := os.Stat(bazelBin); err == nil {
+		return bazelBin
+	}
+
+	// Fall back to go build for non-Bazel environments
 	tmpBinary := filepath.Join(t.TempDir(), "devgo-integration-test")
 
 	cmd := exec.Command("go", "build", "-o", tmpBinary, ".")

@@ -1,0 +1,22 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "devcontainer",
+    srcs = ["devcontainer.go"],
+    importpath = "github.com/garaemon/devgo/pkg/devcontainer",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "devcontainer_test",
+    srcs = ["devcontainer_test.go"],
+    data = [
+        "//test/fixtures:dockerfile-build.json",
+        "//test/fixtures:initialize-command.json",
+        "//test/fixtures:minimal.json",
+        "//test/fixtures:post-start-command.json",
+        "//test/fixtures:simple-image.json",
+        "//test/fixtures:update-content-command.json",
+    ],
+    embed = [":devcontainer"],
+)

@@ -1,0 +1,57 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "cmd",
+    srcs = [
+        "build.go",
+        "down.go",
+        "exec.go",
+        "list.go",
+        "read_configuration.go",
+        "root.go",
+        "shell.go",
+        "stop.go",
+        "up.go",
+        "user_commands.go",
+    ],
+    importpath = "github.com/garaemon/devgo/cmd",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/constants",
+        "//pkg/devcontainer",
+        "@com_github_docker_docker//api/types",
+        "@com_github_docker_docker//api/types/container",
+        "@com_github_docker_docker//api/types/filters",
+        "@com_github_docker_docker//api/types/image",
+        "@com_github_docker_docker//api/types/network",
+        "@com_github_docker_docker//client",
+        "@com_github_docker_docker//pkg/stdcopy",
+        "@com_github_opencontainers_image_spec//specs-go/v1:specs-go",
+        "@org_golang_x_term//:term",
+    ],
+)
+
+go_test(
+    name = "cmd_test",
+    srcs = [
+        "build_test.go",
+        "down_test.go",
+        "exec_test.go",
+        "list_test.go",
+        "read_configuration_test.go",
+        "shell_test.go",
+        "stop_test.go",
+        "up_test.go",
+        "user_commands_test.go",
+    ],
+    embed = [":cmd"],
+    deps = [
+        "//pkg/constants",
+        "//pkg/devcontainer",
+        "@com_github_docker_docker//api/types",
+        "@com_github_docker_docker//api/types/container",
+        "@com_github_docker_docker//api/types/image",
+        "@com_github_docker_docker//api/types/network",
+        "@com_github_opencontainers_image_spec//specs-go/v1:specs-go",
+    ],
+)

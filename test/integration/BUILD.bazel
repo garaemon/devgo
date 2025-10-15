@@ -1,0 +1,11 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_test")
+
+go_test(
+    name = "integration_test",
+    srcs = [
+        "docker_compose_test.go",
+        "initialize_command_test.go",
+        "up_test.go",
+    ],
+    data = ["//:devgo"],
+)

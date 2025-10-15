@@ -1,0 +1,11 @@
+# Common build settings
+build --incompatible_enable_cc_toolchain_resolution
+
+# Show test output on failure
+test --test_output=errors
+
+# Enable remote cache for CI
+build:ci --remote_cache=
+
+# Use Go 1.23.0
+build --@io_bazel_rules_go//go/toolchain:sdk_version=1.23.0

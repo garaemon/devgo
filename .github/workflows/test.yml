@@ -9,35 +9,36 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
         go-version: ['1.21', '1.22', '1.23', '1.24']
-        
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go-version }}
-        
-    - name: Cache Go modules
+
+    - name: Setup Bazelisk
+      uses: bazelbuild/setup-bazelisk@v3
+
+    - name: Mount bazel cache
       uses: actions/cache@v3
       with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+        path: |
+          ~/.cache/bazel
+        key: ${{ runner.os }}-bazel-${{ hashFiles('**/*.bazel', '**/*.bzl', 'WORKSPACE', 'go.sum') }}
         restore-keys: |
-          ${{ runner.os }}-go-mod-
-          
-    - name: Download dependencies
-      run: go mod download
-      
+          ${{ runner.os }}-bazel-
+
     - name: Run tests with coverage
-      run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
-      
+      run: bazel test --test_output=errors --test_arg=-test.v //...
+
     - name: Build
-      run: make build
+      run: bazel build //:devgo
       
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
@@ -50,7 +51,7 @@ jobs:
         
     - name: Run basic smoke test
       run: |
-        ./devgo --help
+        bazel-bin/devgo_/devgo --help
 
   integration:
     runs-on: ubuntu-latest
@@ -66,25 +67,24 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go-version }}
-        
-    - name: Cache Go modules
+
+    - name: Setup Bazelisk
+      uses: bazelbuild/setup-bazelisk@v3
+
+    - name: Mount bazel cache
       uses: actions/cache@v3
       with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+        path: |
+          ~/.cache/bazel
+        key: ${{ runner.os }}-bazel-${{ hashFiles('**/*.bazel', '**/*.bzl', 'WORKSPACE', 'go.sum') }}
         restore-keys: |
-          ${{ runner.os }}-go-mod-
-          
-    - name: Download dependencies
-      run: go mod download
-      
+          ${{ runner.os }}-bazel-
+
     - name: Build
-      run: make build
-      
+      run: bazel build //:devgo
+
     - name: Run integration tests
-      run: |
-        cd test/integration
-        go test -v -timeout=300s
+      run: bazel test //test/integration:integration_test --test_output=errors --test_timeout=300
         
   lint:
     runs-on: ubuntu-latest
@@ -96,10 +96,7 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: 1.21
-        
-    - name: Download dependencies
-      run: go mod download
-      
+
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v8
       with:

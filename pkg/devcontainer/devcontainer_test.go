@@ -7,8 +7,19 @@ import (
 	"testing"
 )
 
+// getFixturePath returns the path to a fixture file, handling both
+// regular go test and bazel test environments
+func getFixturePath(filename string) string {
+	// Try bazel runfiles first
+	if runfiles := os.Getenv("RUNFILES_DIR"); runfiles != "" {
+		return filepath.Join(runfiles, "_main", "test", "fixtures", filename)
+	}
+	// Fall back to relative path for go test
+	return filepath.Join("..", "..", "test", "fixtures", filename)
+}
+
 func TestParse_SimpleImage(t *testing.T) {
-	fixturePath := filepath.Join("..", "..", "test", "fixtures", "simple-image.json")
+	fixturePath := getFixturePath("simple-image.json")
 
 	dc, err := Parse(fixturePath)
 	if err != nil {
@@ -126,7 +137,7 @@ func TestParse_DockerComposeMultipleFiles(t *testing.T) {
 }
 
 func TestParse_DockerfileBuild(t *testing.T) {
-	fixturePath := filepath.Join("..", "..", "test", "fixtures", "dockerfile-build.json")
+	fixturePath := getFixturePath("dockerfile-build.json")
 
 	dc, err := Parse(fixturePath)
 	if err != nil {
@@ -168,7 +179,7 @@ func TestParse_DockerfileBuild(t *testing.T) {
 }
 
 func TestParse_Minimal(t *testing.T) {
-	fixturePath := filepath.Join("..", "..", "test", "fixtures", "minimal.json")
+	fixturePath := getFixturePath("minimal.json")
 
 	dc, err := Parse(fixturePath)
 	if err != nil {
@@ -185,7 +196,7 @@ func TestParse_Minimal(t *testing.T) {
 }
 
 func TestParse_UpdateContentCommand(t *testing.T) {
-	fixturePath := filepath.Join("..", "..", "test", "fixtures", "update-content-command.json")
+	fixturePath := getFixturePath("update-content-command.json")
 
 	dc, err := Parse(fixturePath)
 	if err != nil {
@@ -917,7 +928,7 @@ func TestDevContainer_ShouldWaitForCommand(t *testing.T) {
 }
 
 func TestParse_PostStartCommand(t *testing.T) {
-	dc, err := Parse("../../test/fixtures/post-start-command.json")
+	dc, err := Parse(getFixturePath("post-start-command.json"))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
