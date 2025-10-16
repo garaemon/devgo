@@ -26,6 +26,12 @@ const (
 	WaitForPostStartCommand     = "postStartCommand"
 )
 
+type Mount struct {
+	Type   string `json:"type,omitempty"`
+	Source string `json:"source,omitempty"`
+	Target string `json:"target,omitempty"`
+}
+
 type DevContainer struct {
 	Name                 string                    `json:"name,omitempty"`
 	Image                string                    `json:"image,omitempty"`
@@ -37,6 +43,8 @@ type DevContainer struct {
 	ContainerUser        string                    `json:"containerUser,omitempty"`
 	RemoteUser           string                    `json:"remoteUser,omitempty"`
 	ContainerEnv         map[string]string         `json:"containerEnv,omitempty"`
+	RemoteEnv            map[string]string         `json:"remoteEnv,omitempty"`
+	Mounts               []Mount                   `json:"mounts,omitempty"`
 	ForwardPorts         []interface{}             `json:"forwardPorts,omitempty"`
 	PortsAttributes      map[string]PortAttributes `json:"portsAttributes,omitempty"`
 	InitializeCommand    interface{}               `json:"initializeCommand,omitempty"`
