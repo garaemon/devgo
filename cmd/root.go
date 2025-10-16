@@ -26,7 +26,7 @@ var (
 )
 
 // parseAllFlags parses all flags from the argument list, returning non-flag arguments
-func parseAllFlags(args []string) []string {
+func parseAllFlags(args []string) ([]string, error) {
 	var nonFlagArgs []string
 
 	for i := 0; i < len(args); i++ {
@@ -58,17 +58,25 @@ func parseAllFlags(args []string) []string {
 			push = true
 		} else if arg == "--pull" {
 			pull = true
+		} else if len(arg) > 2 && arg[:2] == "--" {
+			// Check if this is an unknown flag
+			return nil, fmt.Errorf("unknown option: %s", arg)
 		} else {
 			nonFlagArgs = append(nonFlagArgs, arg)
 		}
 	}
 
-	return nonFlagArgs
+	return nonFlagArgs, nil
 }
 
 func Execute() error {
 	// Parse all flags from command line arguments
-	args := parseAllFlags(os.Args[1:])
+	args, err := parseAllFlags(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n\n", err)
+		showUsage()
+		return err
+	}
 
 	if showHelp {
 		showUsage()
