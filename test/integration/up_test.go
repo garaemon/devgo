@@ -62,7 +62,7 @@ func TestUpCommandIntegration(t *testing.T) {
 			workingDir:  tempDir,
 			expectError: false,
 			cleanup: func() {
-				containerName := "devgo-" + filepath.Base(tempDir)
+				containerName := "devgo-" + filepath.Base(tempDir) + "-default"
 				cleanupContainer(t, containerName)
 			},
 		},
@@ -71,7 +71,7 @@ func TestUpCommandIntegration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Pre-cleanup any existing containers
-			containerName := "devgo-" + filepath.Base(tt.workingDir)
+			containerName := "devgo-" + filepath.Base(tt.workingDir) + "-default"
 			cleanupContainer(t, containerName)
 
 			// Ensure cleanup happens
@@ -147,7 +147,7 @@ func TestUpCommandWithExistingContainer(t *testing.T) {
 	devgoBinary := buildDevgoBinary(t)
 	defer os.Remove(devgoBinary)
 
-	containerName := "devgo-" + filepath.Base(tempDir)
+	containerName := "devgo-" + filepath.Base(tempDir) + "-default"
 	// Clean up any existing containers first
 	cleanupContainer(t, containerName)
 	defer cleanupContainer(t, containerName)
@@ -403,7 +403,7 @@ func TestOnCreateCommandIntegration(t *testing.T) {
 			devgoBinary := buildDevgoBinary(t)
 			defer os.Remove(devgoBinary)
 
-			containerName := "devgo-" + filepath.Base(tempDir)
+			containerName := "devgo-" + filepath.Base(tempDir) + "-default"
 			cleanupContainer(t, containerName)
 			defer func() {
 				// Clean up container-created files before container cleanup
@@ -495,7 +495,7 @@ func TestOnCreateCommandFailure(t *testing.T) {
 	devgoBinary := buildDevgoBinary(t)
 	defer os.Remove(devgoBinary)
 
-	containerName := "devgo-" + filepath.Base(tempDir)
+	containerName := "devgo-" + filepath.Base(tempDir) + "-default"
 	cleanupContainer(t, containerName)
 	defer func() {
 		cleanupContainerFiles(t, containerName, tempDir)

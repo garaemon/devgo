@@ -50,17 +50,18 @@ func listDevgoContainers(ctx context.Context, cli DockerListClient) error {
 		return nil
 	}
 
-	fmt.Printf("%-20s %-15s %-20s %-10s %s\n", "NAME", "STATUS", "IMAGE", "CREATED", "WORKSPACE")
-	fmt.Println(strings.Repeat("-", 80))
+	fmt.Printf("%-20s %-12s %-15s %-20s %-10s %s\n", "NAME", "SESSION", "STATUS", "IMAGE", "CREATED", "WORKSPACE")
+	fmt.Println(strings.Repeat("-", 90))
 
 	for _, c := range containers {
 		name := getContainerName(c.Names)
+		session := getSessionFromLabels(c.Labels)
 		status := c.Status
 		image := c.Image
 		created := time.Unix(c.Created, 0).Format("2006-01-02")
 		workspace := getWorkspaceFromLabels(c.Labels)
 
-		fmt.Printf("%-20s %-15s %-20s %-10s %s\n", name, status, image, created, workspace)
+		fmt.Printf("%-20s %-12s %-15s %-20s %-10s %s\n", name, session, status, image, created, workspace)
 	}
 
 	return nil
@@ -77,6 +78,13 @@ func getContainerName(names []string) string {
 func getWorkspaceFromLabels(labels map[string]string) string {
 	if workspace, exists := labels[constants.DevgoWorkspaceLabel]; exists {
 		return workspace
+	}
+	return "<unknown>"
+}
+
+func getSessionFromLabels(labels map[string]string) string {
+	if session, exists := labels[constants.DevgoSessionLabel]; exists {
+		return session
 	}
 	return "<unknown>"
 }

@@ -367,10 +367,17 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 		}
 	}
 
+	// Determine session name
+	session := sessionName
+	if session == "" {
+		session = constants.DefaultSessionName
+	}
+
 	// Create container configuration with devgo labels
 	labels := map[string]string{
 		constants.DevgoManagedLabel:   constants.DevgoManagedValue,
 		constants.DevgoWorkspaceLabel: args.WorkspaceDir,
+		constants.DevgoSessionLabel:   session,
 	}
 
 	config := &container.Config{
