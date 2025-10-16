@@ -10,4 +10,10 @@ const (
 
 	// DevgoWorkspaceLabel is the label key used to store the workspace path
 	DevgoWorkspaceLabel = "devgo.workspace"
+
+	// DevgoSessionLabel is the label key used to store the session name
+	DevgoSessionLabel = "devgo.session"
+
+	// DefaultSessionName is the default session name when not specified
+	DefaultSessionName = "default"
 )

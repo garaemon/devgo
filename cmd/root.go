@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/garaemon/devgo/pkg/constants"
 	"github.com/garaemon/devgo/pkg/devcontainer"
 	// "github.com/garaemon/devgo/pkg/config"
 	// "github.com/garaemon/devgo/pkg/docker"
@@ -16,6 +17,7 @@ var (
 	forceBuild      bool
 	containerName   string
 	imageName       string
+	sessionName     string
 	push            bool
 	pull            bool
 	verbose         bool
@@ -46,6 +48,9 @@ func parseAllFlags(args []string) []string {
 			i++ // skip the next argument as it's the value
 		} else if arg == "--image-name" && i+1 < len(args) {
 			imageName = args[i+1]
+			i++ // skip the next argument as it's the value
+		} else if arg == "--session" && i+1 < len(args) {
+			sessionName = args[i+1]
 			i++ // skip the next argument as it's the value
 		} else if arg == "--force-build" {
 			forceBuild = true
@@ -138,6 +143,8 @@ Flags:
         Publish the built image
   --pull
         Force pull image before starting container
+  --session string
+        Session name for running multiple containers (default "default")
   --verbose
         Enable verbose output
   --version
@@ -214,14 +221,23 @@ func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDi
 		return containerName
 	}
 
+	session := sessionName
+	if session == "" {
+		session = constants.DefaultSessionName
+	}
+
 	// For docker compose, use service name with project prefix
 	if devContainer.HasDockerCompose() && devContainer.GetService() != "" {
 		projectName := filepath.Base(workspaceDir)
 		return fmt.Sprintf("%s-%s-1", projectName, devContainer.GetService())
 	}
 
+	baseName := ""
 	if devContainer.Name != "" {
-		return devContainer.Name
+		baseName = devContainer.Name
+	} else {
+		baseName = fmt.Sprintf("devgo-%s", filepath.Base(workspaceDir))
 	}
-	return fmt.Sprintf("devgo-%s", filepath.Base(workspaceDir))
+
+	return fmt.Sprintf("%s-%s", baseName, session)
 }

@@ -264,14 +264,14 @@ func TestDetermineContainerName(t *testing.T) {
 			containerNameFlag: "",
 			devContainerName:  "devcontainer-name",
 			workspaceDir:      "/path/to/workspace",
-			expectedResult:    "devcontainer-name",
+			expectedResult:    "devcontainer-name-default",
 		},
 		{
 			name:              "default name from workspace",
 			containerNameFlag: "",
 			devContainerName:  "",
 			workspaceDir:      "/path/to/workspace",
-			expectedResult:    "devgo-workspace",
+			expectedResult:    "devgo-workspace-default",
 		},
 	}
 

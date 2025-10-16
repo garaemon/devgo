@@ -149,12 +149,13 @@ func TestListDevgoContainers(t *testing.T) {
 					Labels: map[string]string{
 						constants.DevgoManagedLabel:   constants.DevgoManagedValue,
 						constants.DevgoWorkspaceLabel: "/home/user/project",
+						constants.DevgoSessionLabel:   "default",
 					},
 				},
 			},
-			expectedOutput: "NAME                 STATUS          IMAGE                CREATED    WORKSPACE\n" +
-				"--------------------------------------------------------------------------------\n" +
-				"test-container       Up 2 minutes    ubuntu:22.04         2025-06-19 /home/user/project\n",
+			expectedOutput: "NAME                 SESSION      STATUS          IMAGE                CREATED    WORKSPACE\n" +
+				"------------------------------------------------------------------------------------------\n" +
+				"test-container       default      Up 2 minutes    ubuntu:22.04         2025-06-19 /home/user/project\n",
 		},
 		{
 			name: "multiple containers",
@@ -168,6 +169,7 @@ func TestListDevgoContainers(t *testing.T) {
 					Labels: map[string]string{
 						constants.DevgoManagedLabel:   constants.DevgoManagedValue,
 						constants.DevgoWorkspaceLabel: "/home/user/project1",
+						constants.DevgoSessionLabel:   "session1",
 					},
 				},
 				{
@@ -179,13 +181,14 @@ func TestListDevgoContainers(t *testing.T) {
 					Labels: map[string]string{
 						constants.DevgoManagedLabel:   constants.DevgoManagedValue,
 						constants.DevgoWorkspaceLabel: "/home/user/project2",
+						constants.DevgoSessionLabel:   "session2",
 					},
 				},
 			},
-			expectedOutput: "NAME                 STATUS          IMAGE                CREATED    WORKSPACE\n" +
-				"--------------------------------------------------------------------------------\n" +
-				"test-container-1     Up 2 minutes    ubuntu:22.04         2025-06-19 /home/user/project1\n" +
-				"test-container-2     Exited (0) 1 hour ago alpine:latest        2025-06-19 /home/user/project2\n",
+			expectedOutput: "NAME                 SESSION      STATUS          IMAGE                CREATED    WORKSPACE\n" +
+				"------------------------------------------------------------------------------------------\n" +
+				"test-container-1     session1     Up 2 minutes    ubuntu:22.04         2025-06-19 /home/user/project1\n" +
+				"test-container-2     session2     Exited (0) 1 hour ago alpine:latest        2025-06-19 /home/user/project2\n",
 		},
 		{
 			name: "container with missing workspace label",
@@ -201,9 +204,9 @@ func TestListDevgoContainers(t *testing.T) {
 					},
 				},
 			},
-			expectedOutput: "NAME                 STATUS          IMAGE                CREATED    WORKSPACE\n" +
-				"--------------------------------------------------------------------------------\n" +
-				"test-container       Up 2 minutes    ubuntu:22.04         2025-06-19 <unknown>\n",
+			expectedOutput: "NAME                 SESSION      STATUS          IMAGE                CREATED    WORKSPACE\n" +
+				"------------------------------------------------------------------------------------------\n" +
+				"test-container       <unknown>    Up 2 minutes    ubuntu:22.04         2025-06-19 <unknown>\n",
 		},
 		{
 			name:        "docker client error",
