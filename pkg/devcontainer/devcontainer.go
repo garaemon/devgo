@@ -1,9 +1,10 @@
 package devcontainer
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/titanous/json5"
 )
 
 type BuildConfig struct {
@@ -63,7 +64,7 @@ func Parse(filePath string) (*DevContainer, error) {
 	}
 
 	var devContainer DevContainer
-	if err := json.Unmarshal(data, &devContainer); err != nil {
+	if err := json5.Unmarshal(data, &devContainer); err != nil {
 		return nil, fmt.Errorf("failed to parse devcontainer.json: %w", err)
 	}
 

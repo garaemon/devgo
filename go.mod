@@ -9,6 +9,8 @@ require (
 	golang.org/x/term v0.32.0
 )
 
+require github.com/titanous/json5 v1.0.0 // indirect
+
 require (
 	github.com/Microsoft/go-winio v0.4.14 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect

@@ -968,3 +968,273 @@ func TestParse_WaitFor(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_JSON5Comments(t *testing.T) {
+	content := `{
+		// This is a single line comment
+		"name": "JSON5 Test Container",
+		/* This is a
+		   multi-line comment */
+		"image": "node:18",
+		"workspaceFolder": "/workspace" // trailing comment
+	}`
+
+	tmpfile, err := os.CreateTemp("", "json5-comments-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
+
+	dc, err := Parse(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if dc.Name != "JSON5 Test Container" {
+		t.Errorf("Name = %v, want %v", dc.Name, "JSON5 Test Container")
+	}
+
+	if dc.Image != "node:18" {
+		t.Errorf("Image = %v, want %v", dc.Image, "node:18")
+	}
+
+	if dc.WorkspaceFolder != "/workspace" {
+		t.Errorf("WorkspaceFolder = %v, want %v", dc.WorkspaceFolder, "/workspace")
+	}
+}
+
+func TestParse_JSON5TrailingCommas(t *testing.T) {
+	content := `{
+		"name": "Trailing Comma Test",
+		"image": "golang:1.21",
+		"containerEnv": {
+			"GO111MODULE": "on",
+			"CGO_ENABLED": "0",
+		},
+		"forwardPorts": [
+			8080,
+			8081,
+		],
+	}`
+
+	tmpfile, err := os.CreateTemp("", "json5-trailing-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
+
+	dc, err := Parse(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if dc.Name != "Trailing Comma Test" {
+		t.Errorf("Name = %v, want %v", dc.Name, "Trailing Comma Test")
+	}
+
+	if len(dc.ContainerEnv) != 2 {
+		t.Errorf("ContainerEnv length = %v, want %v", len(dc.ContainerEnv), 2)
+	}
+
+	if len(dc.ForwardPorts) != 2 {
+		t.Errorf("ForwardPorts length = %v, want %v", len(dc.ForwardPorts), 2)
+	}
+}
+
+func TestParse_JSON5SingleQuotes(t *testing.T) {
+	content := `{
+		'name': 'Single Quote Test',
+		'image': 'python:3.11',
+		'workspaceFolder': '/app'
+	}`
+
+	tmpfile, err := os.CreateTemp("", "json5-quotes-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
+
+	dc, err := Parse(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if dc.Name != "Single Quote Test" {
+		t.Errorf("Name = %v, want %v", dc.Name, "Single Quote Test")
+	}
+
+	if dc.Image != "python:3.11" {
+		t.Errorf("Image = %v, want %v", dc.Image, "python:3.11")
+	}
+
+	if dc.WorkspaceFolder != "/app" {
+		t.Errorf("WorkspaceFolder = %v, want %v", dc.WorkspaceFolder, "/app")
+	}
+}
+
+func TestParse_JSON5UnquotedKeys(t *testing.T) {
+	content := `{
+		name: "Unquoted Keys Test",
+		image: "ubuntu:22.04",
+		workspaceFolder: "/workspace"
+	}`
+
+	tmpfile, err := os.CreateTemp("", "json5-unquoted-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
+
+	dc, err := Parse(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if dc.Name != "Unquoted Keys Test" {
+		t.Errorf("Name = %v, want %v", dc.Name, "Unquoted Keys Test")
+	}
+
+	if dc.Image != "ubuntu:22.04" {
+		t.Errorf("Image = %v, want %v", dc.Image, "ubuntu:22.04")
+	}
+}
+
+func TestParse_JSON5MultilineStrings(t *testing.T) {
+	content := `{
+		"name": "Multiline String Test",
+		"image": "node:18",
+		"onCreateCommand": "echo 'Line 1' && \
+echo 'Line 2' && \
+echo 'Line 3'"
+	}`
+
+	tmpfile, err := os.CreateTemp("", "json5-multiline-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
+
+	dc, err := Parse(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if dc.Name != "Multiline String Test" {
+		t.Errorf("Name = %v, want %v", dc.Name, "Multiline String Test")
+	}
+
+	args := dc.GetOnCreateCommandArgs()
+	if len(args) != 3 {
+		t.Errorf("GetOnCreateCommandArgs() length = %v, want 3", len(args))
+	}
+}
+
+func TestParse_JSON5ComplexExample(t *testing.T) {
+	content := `{
+		// Container configuration with JSON5 features
+		name: 'Full JSON5 Example',
+		image: 'golang:1.21',
+		/* Multi-line comment
+		   describing the workspace configuration */
+		workspaceFolder: '/workspace',
+		containerEnv: {
+			GO111MODULE: 'on',
+			CGO_ENABLED: '0',
+		},
+		// Port forwarding with trailing comma
+		forwardPorts: [
+			8080, // API server
+			8081, // Metrics
+		],
+		// Lifecycle commands
+		onCreateCommand: 'go mod download',
+		postCreateCommand: 'go build ./...',
+	}`
+
+	tmpfile, err := os.CreateTemp("", "json5-complex-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatalf("Failed to close temp file: %v", err)
+	}
+
+	dc, err := Parse(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if dc.Name != "Full JSON5 Example" {
+		t.Errorf("Name = %v, want %v", dc.Name, "Full JSON5 Example")
+	}
+
+	if dc.Image != "golang:1.21" {
+		t.Errorf("Image = %v, want %v", dc.Image, "golang:1.21")
+	}
+
+	if dc.WorkspaceFolder != "/workspace" {
+		t.Errorf("WorkspaceFolder = %v, want %v", dc.WorkspaceFolder, "/workspace")
+	}
+
+	if len(dc.ContainerEnv) != 2 {
+		t.Errorf("ContainerEnv length = %v, want 2", len(dc.ContainerEnv))
+	}
+
+	if dc.ContainerEnv["GO111MODULE"] != "on" {
+		t.Errorf("ContainerEnv[GO111MODULE] = %v, want on", dc.ContainerEnv["GO111MODULE"])
+	}
+
+	if len(dc.ForwardPorts) != 2 {
+		t.Errorf("ForwardPorts length = %v, want 2", len(dc.ForwardPorts))
+	}
+
+	onCreateArgs := dc.GetOnCreateCommandArgs()
+	if len(onCreateArgs) != 3 || onCreateArgs[2] != "go mod download" {
+		t.Errorf("GetOnCreateCommandArgs() = %v, want [/bin/sh -c go mod download]", onCreateArgs)
+	}
+
+	postCreateArgs := dc.GetPostCreateCommandArgs()
+	if len(postCreateArgs) != 3 || postCreateArgs[2] != "go build ./..." {
+		t.Errorf("GetPostCreateCommandArgs() = %v, want [/bin/sh -c go build ./...]", postCreateArgs)
+	}
+}
