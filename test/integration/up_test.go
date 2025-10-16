@@ -318,12 +318,30 @@ func stopContainer(t *testing.T, containerName string) {
 func cleanupContainer(t *testing.T, containerName string) {
 	t.Helper()
 
-	// Stop and remove container
-	stopCmd := exec.Command("docker", "stop", containerName)
-	stopCmd.Run() // Ignore errors - container might not be running
-
-	removeCmd := exec.Command("docker", "rm", containerName)
+	// Force stop and remove container
+	// Use -f flag to force removal even if container is running
+	removeCmd := exec.Command("docker", "rm", "-f", containerName)
 	removeCmd.Run() // Ignore errors - container might not exist
+
+	// Also cleanup any containers with matching prefix (e.g., docker compose containers)
+	// This handles cases where the container name matches a directory name pattern
+	if strings.Contains(containerName, "devgo-") {
+		// Extract base name pattern (e.g., "001" from "devgo-001-default")
+		baseName := strings.TrimPrefix(containerName, "devgo-")
+		baseName = strings.TrimSuffix(baseName, "-default")
+
+		// Remove any docker compose containers with this pattern
+		composeContainers := []string{
+			baseName + "-app-1",
+			baseName + "-redis-1",
+			baseName + "-db-1",
+		}
+
+		for _, cn := range composeContainers {
+			cmd := exec.Command("docker", "rm", "-f", cn)
+			cmd.Run() // Ignore errors
+		}
+	}
 }
 
 // TestOnCreateCommandIntegration tests onCreateCommand execution in actual containers
