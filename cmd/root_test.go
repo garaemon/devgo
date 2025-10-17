@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"bytes"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -241,5 +244,80 @@ func TestParseAllFlags_FlagValues(t *testing.T) {
 				t.Errorf("showVersion = %v, want %v", showVersion, tt.expectVersion)
 			}
 		})
+	}
+}
+
+func TestExecute_UnknownOption(t *testing.T) {
+	// Save original os.Args and restore after test
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	// Capture stderr
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	// Set os.Args to include an unknown option
+	os.Args = []string{"devgo", "--unknown-option"}
+
+	// Execute should return an error
+	err := Execute()
+	if err == nil {
+		t.Error("expected error but got none")
+	}
+
+	// Check error message
+	expectedError := "unknown option: --unknown-option"
+	if err.Error() != expectedError {
+		t.Errorf("expected error %q, got %q", expectedError, err.Error())
+	}
+
+	// Close writer and read stderr
+	w.Close()
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	os.Stderr = oldStderr
+
+	stderrOutput := buf.String()
+
+	// Verify that error message and usage were printed to stderr
+	if !strings.Contains(stderrOutput, "Error: unknown option: --unknown-option") {
+		t.Errorf("stderr should contain error message, got: %s", stderrOutput)
+	}
+	if !strings.Contains(stderrOutput, "devgo - Run commands in a devcontainer") {
+		t.Errorf("stderr should contain usage help, got: %s", stderrOutput)
+	}
+}
+
+func TestExecute_Help(t *testing.T) {
+	// Save original os.Args and restore after test
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	// Capture stderr
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	// Set os.Args to use --help
+	os.Args = []string{"devgo", "--help"}
+
+	// Execute should not return an error
+	err := Execute()
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Close writer and read stderr
+	w.Close()
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	os.Stderr = oldStderr
+
+	stderrOutput := buf.String()
+
+	// Verify that usage was printed to stderr
+	if !strings.Contains(stderrOutput, "devgo - Run commands in a devcontainer") {
+		t.Errorf("stderr should contain usage help, got: %s", stderrOutput)
 	}
 }
