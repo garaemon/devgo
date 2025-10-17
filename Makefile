@@ -1,6 +1,8 @@
 .PHONY: build test lint clean install test-integration ci-full help
 
 # Default target
+.DEFAULT_GOAL := build
+
 help:
 	@echo "Available targets:"
 	@echo "  build            - Build the binary"
