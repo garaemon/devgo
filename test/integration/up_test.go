@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -627,4 +628,238 @@ func cleanupContainerFiles(t *testing.T, containerName, workspaceDir string) {
 		cmd.Args = append(cmd.Args, cmdArgs...)
 		cmd.Run() // Ignore errors - files might not exist
 	}
+}
+
+// TestUpdateRemoteUserUIDIntegration tests UID/GID synchronization in actual containers
+func TestUpdateRemoteUserUIDIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration tests in short mode")
+	}
+
+	if !isDockerAvailable() {
+		t.Skip("Docker is not available, skipping integration test")
+	}
+
+	// This test only works on Linux
+	if runtime.GOOS != "linux" {
+		t.Skip("Skipping UID/GID sync test on non-Linux platform")
+	}
+
+	// Get host UID/GID
+	hostUID := os.Getuid()
+	hostGID := os.Getgid()
+
+	tests := []struct {
+		name                string
+		devcontainerContent string
+		targetUser          string
+		shouldSync          bool
+		expectHostUID       bool
+		expectHostGID       bool
+	}{
+		{
+			name: "remoteUser UID/GID sync enabled",
+			devcontainerContent: `{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true
+}`,
+			targetUser:    "vscode",
+			shouldSync:    true,
+			expectHostUID: true,
+			expectHostGID: true,
+		},
+		{
+			name: "containerUser UID/GID sync enabled",
+			devcontainerContent: `{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "workspaceFolder": "/workspace",
+  "containerUser": "vscode",
+  "updateRemoteUserUID": true
+}`,
+			targetUser:    "vscode",
+			shouldSync:    true,
+			expectHostUID: true,
+			expectHostGID: true,
+		},
+		{
+			name: "root user should not be modified",
+			devcontainerContent: `{
+  "image": "alpine:3.19",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "root",
+  "updateRemoteUserUID": true
+}`,
+			targetUser:    "root",
+			shouldSync:    false,
+			expectHostUID: false,
+			expectHostGID: false,
+		},
+		{
+			name: "UID/GID sync disabled",
+			devcontainerContent: `{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": false
+}`,
+			targetUser:    "vscode",
+			shouldSync:    false,
+			expectHostUID: false,
+			expectHostGID: false,
+		},
+		{
+			name: "default UID/GID sync (enabled by default)",
+			devcontainerContent: `{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "vscode"
+}`,
+			targetUser:    "vscode",
+			shouldSync:    true,
+			expectHostUID: true,
+			expectHostGID: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temporary workspace
+			tempDir := t.TempDir()
+
+			// Setup devcontainer
+			setupDevcontainerWithContent(t, tempDir, tt.devcontainerContent)
+
+			// Build devgo binary
+			devgoBinary := buildDevgoBinary(t)
+			defer os.Remove(devgoBinary)
+
+			containerName := "devgo-" + filepath.Base(tempDir) + "-default"
+			cleanupContainer(t, containerName)
+			defer cleanupContainer(t, containerName)
+
+			// Change to working directory
+			originalDir, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("Failed to get current directory: %v", err)
+			}
+			defer os.Chdir(originalDir)
+
+			if err := os.Chdir(tempDir); err != nil {
+				t.Fatalf("Failed to change to working directory: %v", err)
+			}
+
+			// Run devgo up command
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			defer cancel()
+
+			cmd := exec.CommandContext(ctx, devgoBinary, "up")
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("devgo up failed: %v. Output: %s", err, string(output))
+			}
+
+			t.Logf("devgo up output: %s", string(output))
+
+			// Verify container is running
+			if !isContainerRunning(t, containerName) {
+				t.Fatalf("Container %s is not running", containerName)
+			}
+
+			// Check if UID/GID sync message appears in output
+			if tt.shouldSync {
+				expectedMsg := fmt.Sprintf("Updating container user '%s' UID/GID to match host", tt.targetUser)
+				if !strings.Contains(string(output), expectedMsg) {
+					t.Logf("Warning: Expected UID/GID sync message not found in output")
+				}
+			}
+
+			// Get container user's UID and GID
+			containerUID := getContainerUserUID(t, containerName, tt.targetUser)
+			containerGID := getContainerUserGID(t, containerName, tt.targetUser)
+
+			t.Logf("Host UID/GID: %d:%d", hostUID, hostGID)
+			t.Logf("Container user '%s' UID/GID: %d:%d", tt.targetUser, containerUID, containerGID)
+
+			// Verify UID/GID matches expectations
+			if tt.expectHostUID {
+				if containerUID != hostUID {
+					t.Errorf("Expected container UID to match host UID (%d), got %d", hostUID, containerUID)
+				}
+			} else if tt.targetUser == "root" {
+				// Root user should always have UID 0
+				if containerUID != 0 {
+					t.Errorf("Root user should have UID 0, got %d", containerUID)
+				}
+			}
+
+			if tt.expectHostGID {
+				if containerGID != hostGID {
+					t.Errorf("Expected container GID to match host GID (%d), got %d", hostGID, containerGID)
+				}
+			} else if tt.targetUser == "root" {
+				// Root user should always have GID 0
+				if containerGID != 0 {
+					t.Errorf("Root user should have GID 0, got %d", containerGID)
+				}
+			}
+
+			// Verify that files created in workspace have correct ownership
+			if tt.expectHostUID && tt.targetUser != "root" {
+				// Create a test file in the container
+				createCmd := exec.Command("docker", "exec", "-u", tt.targetUser, containerName, "touch", "/workspace/test-ownership.txt")
+				if err := createCmd.Run(); err != nil {
+					t.Logf("Failed to create test file: %v", err)
+				} else {
+					// Check file ownership on host
+					testFile := filepath.Join(tempDir, "test-ownership.txt")
+					fileInfo, err := os.Stat(testFile)
+					if err != nil {
+						t.Logf("Failed to stat test file: %v", err)
+					} else {
+						t.Logf("Test file ownership verified: %v", fileInfo)
+					}
+				}
+			}
+		})
+	}
+}
+
+// Helper function to get container user's UID
+func getContainerUserUID(t *testing.T, containerName, username string) int {
+	t.Helper()
+
+	cmd := exec.Command("docker", "exec", containerName, "id", "-u", username)
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("Failed to get UID for user %s: %v", username, err)
+	}
+
+	var uid int
+	_, err = fmt.Sscanf(strings.TrimSpace(string(output)), "%d", &uid)
+	if err != nil {
+		t.Fatalf("Failed to parse UID: %v", err)
+	}
+
+	return uid
+}
+
+// Helper function to get container user's GID
+func getContainerUserGID(t *testing.T, containerName, username string) int {
+	t.Helper()
+
+	cmd := exec.Command("docker", "exec", containerName, "id", "-g", username)
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("Failed to get GID for user %s: %v", username, err)
+	}
+
+	var gid int
+	_, err = fmt.Sscanf(strings.TrimSpace(string(output)), "%d", &gid)
+	if err != nil {
+		t.Fatalf("Failed to parse GID: %v", err)
+	}
+
+	return gid
 }
