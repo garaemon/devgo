@@ -228,7 +228,7 @@ func TestShellCommandExecOptions(t *testing.T) {
 		t.Errorf("expected AttachStderr to be true for shell command")
 	}
 
-	// Verify shell command uses /bin/bash --login with custom prompt in environment
+	// Verify shell command uses /bin/bash --login
 	expectedCmd := []string{"/bin/bash", "--login"}
 	if len(capturedExecOptions.Cmd) != len(expectedCmd) {
 		t.Errorf("expected Cmd to be %v, got %v", expectedCmd, capturedExecOptions.Cmd)
@@ -237,28 +237,6 @@ func TestShellCommandExecOptions(t *testing.T) {
 			if capturedExecOptions.Cmd[i] != cmd {
 				t.Errorf("expected Cmd[%d] to be %q, got %q", i, cmd, capturedExecOptions.Cmd[i])
 			}
-		}
-	}
-
-	// Verify custom prompt is set in environment
-	if len(capturedExecOptions.Env) == 0 {
-		t.Errorf("expected environment variables to be set for custom prompt")
-	} else {
-		foundPS1 := false
-		for _, env := range capturedExecOptions.Env {
-			if strings.HasPrefix(env, "PS1=") {
-				foundPS1 = true
-				if !strings.Contains(env, "[devcontainer:") {
-					t.Errorf("expected PS1 environment variable to contain '[devcontainer:', got %q", env)
-				}
-				if !strings.Contains(env, "test-container") {
-					t.Errorf("expected PS1 environment variable to contain container name 'test-container', got %q", env)
-				}
-				break
-			}
-		}
-		if !foundPS1 {
-			t.Errorf("expected PS1 environment variable to be set, got %v", capturedExecOptions.Env)
 		}
 	}
 }
@@ -302,5 +280,58 @@ func TestShellCommandContainerNameLogic(t *testing.T) {
 				t.Errorf("determineContainerName() = %q, want %q", result, tt.expectedName)
 			}
 		})
+	}
+}
+
+func TestShellRespectsBashrc(t *testing.T) {
+	devContainer := &devcontainer.DevContainer{
+		ContainerUser:   "testuser",
+		WorkspaceFolder: "/workspace",
+	}
+
+	containers := []container.Summary{
+		{
+			ID:    "test123",
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				constants.DevgoManagedLabel: constants.DevgoManagedValue,
+			},
+		},
+	}
+
+	baseMockClient := &mockExecClient{
+		containers: containers,
+		execCreateResponse: container.ExecCreateResponse{
+			ID: "exec123",
+		},
+		execAttachResponse: createMockHijackedResponse(),
+	}
+
+	mockClient := &mockShellExecClient{
+		mockExecClient: baseMockClient,
+	}
+
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer)
+
+	capturedExecOptions := mockClient.capturedExecOptions
+
+	// Verify PS1 is NOT set in environment to respect container's .bashrc
+	// This aligns with README.md documentation about respecting .bashrc configuration
+	for _, env := range capturedExecOptions.Env {
+		if strings.HasPrefix(env, "PS1=") {
+			t.Errorf("PS1 should not be set in environment to respect .bashrc, but found: %q", env)
+		}
+	}
+
+	// Verify /bin/bash --login is used to source .bashrc
+	expectedCmd := []string{"/bin/bash", "--login"}
+	if len(capturedExecOptions.Cmd) != len(expectedCmd) {
+		t.Errorf("expected Cmd to be %v for proper .bashrc sourcing, got %v", expectedCmd, capturedExecOptions.Cmd)
+	} else {
+		for i, cmd := range expectedCmd {
+			if capturedExecOptions.Cmd[i] != cmd {
+				t.Errorf("expected Cmd[%d] to be %q for proper .bashrc sourcing, got %q", i, cmd, capturedExecOptions.Cmd[i])
+			}
+		}
 	}
 }
