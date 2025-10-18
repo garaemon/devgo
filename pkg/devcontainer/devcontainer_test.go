@@ -1238,3 +1238,93 @@ func TestParse_JSON5ComplexExample(t *testing.T) {
 		t.Errorf("GetPostCreateCommandArgs() = %v, want [/bin/sh -c go build ./...]", postCreateArgs)
 	}
 }
+
+func TestShouldUpdateRemoteUserUID(t *testing.T) {
+	trueVal := true
+	falseVal := false
+
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected bool
+	}{
+		{
+			name:     "default (nil) - should return true",
+			dc:       DevContainer{},
+			expected: true,
+		},
+		{
+			name:     "explicitly enabled",
+			dc:       DevContainer{UpdateRemoteUserUID: &trueVal},
+			expected: true,
+		},
+		{
+			name:     "explicitly disabled",
+			dc:       DevContainer{UpdateRemoteUserUID: &falseVal},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.ShouldUpdateRemoteUserUID()
+			if got != tt.expected {
+				t.Errorf("ShouldUpdateRemoteUserUID() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetTargetUser(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected string
+	}{
+		{
+			name:     "default (empty) - should return root",
+			dc:       DevContainer{},
+			expected: "root",
+		},
+		{
+			name:     "only containerUser set",
+			dc:       DevContainer{ContainerUser: "vscode"},
+			expected: "vscode",
+		},
+		{
+			name:     "only remoteUser set",
+			dc:       DevContainer{RemoteUser: "developer"},
+			expected: "developer",
+		},
+		{
+			name: "both set - remoteUser takes priority",
+			dc: DevContainer{
+				ContainerUser: "vscode",
+				RemoteUser:    "developer",
+			},
+			expected: "developer",
+		},
+		{
+			name:     "containerUser is root",
+			dc:       DevContainer{ContainerUser: "root"},
+			expected: "root",
+		},
+		{
+			name: "remoteUser overrides root containerUser",
+			dc: DevContainer{
+				ContainerUser: "root",
+				RemoteUser:    "developer",
+			},
+			expected: "developer",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.GetTargetUser()
+			if got != tt.expected {
+				t.Errorf("GetTargetUser() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}

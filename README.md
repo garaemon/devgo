@@ -229,6 +229,7 @@ Options:
 - ✅ **mounts** - Additional volume mounts
 - ✅ **containerEnv** - Environment variables
 - ✅ **remoteUser** - Container user configuration
+- ✅ **updateRemoteUserUID** - Automatic UID/GID synchronization (Linux only)
 - ✅ **initializeCommand** - Host-side initialization
 - ✅ **onCreateCommand** - Post-creation commands
 - ✅ **updateContentCommand** - Content update commands
@@ -264,6 +265,75 @@ Options:
 - Service dependencies
 - Automatic network creation
 - Volume management
+
+## UID/GID Synchronization (Linux)
+
+On Linux hosts, `devgo` automatically synchronizes the container user's UID/GID with your host user to prevent file ownership and permission issues when using bind mounts. This feature is critical for avoiding problems like:
+
+- Git operations failing with "unsafe repository" errors
+- File permission denied errors when creating/modifying files
+- Ownership mismatches between host and container
+
+### How It Works
+
+When `devgo up` creates a container on Linux:
+
+1. **User Detection**: Identifies the target container user from `remoteUser` or `containerUser` (defaults to `root`)
+2. **UID/GID Retrieval**: Gets the host user's UID/GID (e.g., 1000:1000)
+3. **Container Update**: Updates the container user's UID/GID to match the host user
+4. **Permission Fix**: Updates ownership of the user's home directory
+
+This happens automatically before any lifecycle commands (`onCreate`, `postCreate`, etc.) are executed, ensuring all subsequent operations have correct permissions.
+
+### Configuration
+
+The `updateRemoteUserUID` property controls this behavior:
+
+```json
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true  // Default on Linux, no-op on Windows/macOS
+}
+```
+
+**Default behavior:**
+- **Linux**: `true` (enabled by default)
+- **Windows/macOS**: `false` (not needed due to VM layer handling permissions)
+
+**Disabling (not recommended):**
+```json
+{
+  "updateRemoteUserUID": false
+}
+```
+
+### Important Notes
+
+- **Root user**: UID/GID updates are never applied to the `root` user (UID must stay 0)
+- **Platform-specific**: This feature only activates on Linux hosts
+- **Docker Compose limitation**: Currently only supported with `image` and `dockerFile` properties, not with `dockerComposeFile`
+- **Timing**: Updates occur after container creation but before any lifecycle commands
+
+### Example Scenarios
+
+**Scenario 1: Git repository access**
+```json
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "remoteUser": "vscode"
+}
+```
+The `vscode` user's UID/GID will be updated to match your host user, allowing seamless git operations without "unsafe repository" errors.
+
+**Scenario 2: Node.js development**
+```json
+{
+  "image": "node:20",
+  "containerUser": "node"
+}
+```
+The `node` user will have the correct permissions to install npm packages and access workspace files.
 
 ## Development
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -470,7 +471,76 @@ func (r *realDockerClient) Close() error {
 	return r.client.Close()
 }
 
+func updateRemoteUserUID(ctx context.Context, devContainer *devcontainer.DevContainer, containerName string) error {
+	// Only applicable on Linux
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+
+	// Check if feature is enabled
+	if !devContainer.ShouldUpdateRemoteUserUID() {
+		return nil
+	}
+
+	// Only supported with image and dockerFile, not dockerComposeFile
+	if devContainer.HasDockerCompose() {
+		return nil
+	}
+
+	targetUser := devContainer.GetTargetUser()
+	// Never update root user
+	if targetUser == "" || targetUser == "root" {
+		return nil
+	}
+
+	hostUID := os.Getuid()
+	hostGID := os.Getgid()
+
+	fmt.Printf("Updating container user '%s' UID/GID to match host (%d:%d)\n", targetUser, hostUID, hostGID)
+
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client: %w", err)
+	}
+	defer func() {
+		if closeErr := cli.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+		}
+	}()
+
+	// Commands to update UID/GID
+	// We use || true to make commands non-failing
+	commands := [][]string{
+		// Update user's UID
+		{"/bin/sh", "-c", fmt.Sprintf("usermod -u %d %s 2>/dev/null || true", hostUID, targetUser)},
+		// Update user's primary group GID
+		{"/bin/sh", "-c", fmt.Sprintf("groupmod -g %d %s 2>/dev/null || true", hostGID, targetUser)},
+		// Fix ownership of user's home directory
+		{"/bin/sh", "-c", fmt.Sprintf("chown -R %d:%d /home/%s 2>/dev/null || true", hostUID, hostGID, targetUser)},
+	}
+
+	// Execute commands as root
+	tempDevContainer := &devcontainer.DevContainer{
+		ContainerUser:   "root",
+		WorkspaceFolder: devContainer.GetWorkspaceFolder(),
+	}
+
+	for _, cmd := range commands {
+		if err := executeCommandInContainer(ctx, cli, containerName, cmd, tempDevContainer); err != nil {
+			return fmt.Errorf("failed to execute UID/GID update command: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func executeLifecycleCommands(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
+	// Update remote user UID/GID before executing lifecycle commands
+	if err := updateRemoteUserUID(ctx, devContainer, containerName); err != nil {
+		// Only warn, don't fail the entire lifecycle
+		fmt.Printf("Warning: failed to update remote user UID/GID: %v\n", err)
+	}
+
 	commands := []struct {
 		commandType string
 		executor    func(context.Context, *devcontainer.DevContainer, string, string) error
