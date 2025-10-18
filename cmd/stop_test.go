@@ -5,6 +5,10 @@ import (
 )
 
 func TestRunStopCommand(t *testing.T) {
+	originalConfigPath := configPath
+	defer func() { configPath = originalConfigPath }()
+	configPath = ""
+
 	tests := []struct {
 		name string
 		args []string

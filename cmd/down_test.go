@@ -47,6 +47,10 @@ func (m *mockDownDockerClient) Close() error {
 }
 
 func TestRunDownCommand(t *testing.T) {
+	originalConfigPath := configPath
+	defer func() { configPath = originalConfigPath }()
+	configPath = ""
+
 	tests := []struct {
 		name string
 		args []string
