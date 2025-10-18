@@ -301,12 +301,28 @@ The `updateRemoteUserUID` property controls this behavior:
 - **Linux**: `true` (enabled by default)
 - **Windows/macOS**: `false` (not needed due to VM layer handling permissions)
 
-**Disabling (not recommended):**
+**Disabling the Feature:**
+
+You can disable UID/GID synchronization by setting `updateRemoteUserUID` to `false`:
+
 ```json
 {
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "remoteUser": "vscode",
   "updateRemoteUserUID": false
 }
 ```
+
+**When to disable:**
+- You are using a container that already handles UID/GID mapping internally
+- You have custom UID/GID management scripts in your lifecycle commands
+- You are intentionally using a different UID/GID inside the container
+
+**Important considerations when disabled:**
+- You may encounter "unsafe repository" errors when running git commands
+- File permission issues may occur when creating or modifying files in bind-mounted directories
+- You will need to manually handle file ownership and permission issues
+- Consider alternative solutions like adding `git config --global --add safe.directory /workspace` in your lifecycle commands
 
 ### Important Notes
 

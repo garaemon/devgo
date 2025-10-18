@@ -1494,3 +1494,107 @@ func TestExecutePostAttachCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateRemoteUserUID(t *testing.T) {
+	tests := []struct {
+		name         string
+		devContainer *devcontainer.DevContainer
+		shouldUpdate bool
+		description  string
+	}{
+		{
+			name: "skip when updateRemoteUserUID is false",
+			devContainer: &devcontainer.DevContainer{
+				RemoteUser:          "vscode",
+				UpdateRemoteUserUID: func() *bool { b := false; return &b }(),
+			},
+			shouldUpdate: false,
+			description:  "should skip when explicitly disabled",
+		},
+		{
+			name: "skip for Docker Compose",
+			devContainer: &devcontainer.DevContainer{
+				DockerComposeFile: "docker-compose.yml",
+				Service:           "app",
+				RemoteUser:        "vscode",
+			},
+			shouldUpdate: false,
+			description:  "should skip for Docker Compose setups",
+		},
+		{
+			name: "skip for root user",
+			devContainer: &devcontainer.DevContainer{
+				RemoteUser: "root",
+			},
+			shouldUpdate: false,
+			description:  "should never update root user",
+		},
+		{
+			name: "skip for empty user",
+			devContainer: &devcontainer.DevContainer{
+				ContainerUser: "",
+			},
+			shouldUpdate: false,
+			description:  "should skip when no user specified",
+		},
+		{
+			name: "execute for valid remoteUser",
+			devContainer: &devcontainer.DevContainer{
+				RemoteUser:      "vscode",
+				WorkspaceFolder: "/workspace",
+			},
+			shouldUpdate: true,
+			description:  "should execute UID/GID update for non-root user",
+		},
+		{
+			name: "execute for valid containerUser",
+			devContainer: &devcontainer.DevContainer{
+				ContainerUser:   "developer",
+				WorkspaceFolder: "/workspace",
+			},
+			shouldUpdate: true,
+			description:  "should execute UID/GID update using containerUser",
+		},
+		{
+			name: "remoteUser takes priority over containerUser",
+			devContainer: &devcontainer.DevContainer{
+				ContainerUser: "node",
+				RemoteUser:    "vscode",
+			},
+			shouldUpdate: true,
+			description:  "should use remoteUser when both are set",
+		},
+		{
+			name: "default updateRemoteUserUID is true",
+			devContainer: &devcontainer.DevContainer{
+				RemoteUser: "vscode",
+			},
+			shouldUpdate: true,
+			description:  "should have default value of true",
+		},
+		{
+			name: "explicit updateRemoteUserUID true",
+			devContainer: &devcontainer.DevContainer{
+				RemoteUser:          "vscode",
+				UpdateRemoteUserUID: func() *bool { b := true; return &b }(),
+			},
+			shouldUpdate: true,
+			description:  "should respect explicit true value",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shouldUpdate := tt.devContainer.ShouldUpdateRemoteUserUID()
+			hasCompose := tt.devContainer.HasDockerCompose()
+			targetUser := tt.devContainer.GetTargetUser()
+
+			willExecute := shouldUpdate && !hasCompose && targetUser != "" && targetUser != "root"
+
+			if willExecute != tt.shouldUpdate {
+				t.Errorf("%s: Expected willExecute=%v, got %v (shouldUpdate=%v, hasCompose=%v, targetUser=%s)",
+					tt.description, tt.shouldUpdate, willExecute, shouldUpdate, hasCompose, targetUser)
+			}
+		})
+	}
+}
