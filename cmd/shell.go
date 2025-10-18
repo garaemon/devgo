@@ -56,11 +56,6 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 	user := devContainer.GetContainerUser()
 	workspaceFolder := devContainer.GetWorkspaceFolder()
 
-	// Set up custom prompt to indicate dev container environment with container name
-	// Use \001 and \002 instead of \[ and \] for proper bash prompt rendering
-	// \001 = start of non-printing characters, \002 = end of non-printing characters
-	customPrompt := fmt.Sprintf("\001\033[01;32m\002[devcontainer:%s]\001\033[00m\002 \001\033[01;34m\002\\w\001\033[00m\002 \\$ ", containerName)
-
 	execConfig := container.ExecOptions{
 		User:         user,
 		Tty:          true,
@@ -69,9 +64,6 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		AttachStderr: true,
 		Cmd:          []string{"/bin/bash", "--login"},
 		WorkingDir:   workspaceFolder,
-		Env: []string{
-			fmt.Sprintf("PS1=%s", customPrompt),
-		},
 	}
 
 	execCreateResp, err := cli.ContainerExecCreate(ctx, containerID, execConfig)
