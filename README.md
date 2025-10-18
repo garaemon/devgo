@@ -161,6 +161,16 @@ Options:
 - Sets appropriate working directory
 - Handles signal forwarding (Ctrl+C, etc.)
 
+**Shell Prompt Behavior:**
+
+Following the official DevContainer specification, `devgo shell` respects the container's `.bashrc` configuration and does not override the `PS1` environment variable. This allows:
+
+- Custom prompts defined in `.bashrc` to work properly
+- Git branch display and status indicators (if configured in the container)
+- Full compatibility with official DevContainer images that use `__bash_prompt` or similar prompt functions
+
+The shell is launched with `/bin/bash --login`, which ensures that `.bashrc` and other shell initialization files are properly sourced. This behavior aligns with the official DevContainer CLI's `userEnvProbe` approach.
+
 ### `devgo list`
 
 Lists all containers managed by devgo.
