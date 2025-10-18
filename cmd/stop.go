@@ -12,7 +12,7 @@ import (
 )
 
 func runStopCommand(args []string) error {
-	devcontainerPath, err := findDevcontainerConfig("")
+	devcontainerPath, err := findDevcontainerConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to find devcontainer config: %w", err)
 	}

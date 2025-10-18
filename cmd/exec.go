@@ -30,7 +30,7 @@ func runExecCommand(args []string) error {
 		return fmt.Errorf("exec command requires at least one argument")
 	}
 
-	devcontainerPath, err := findDevcontainerConfig("")
+	devcontainerPath, err := findDevcontainerConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to find devcontainer config: %w", err)
 	}
