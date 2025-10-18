@@ -282,3 +282,56 @@ func TestShellCommandContainerNameLogic(t *testing.T) {
 		})
 	}
 }
+
+func TestShellRespectsBashrc(t *testing.T) {
+	devContainer := &devcontainer.DevContainer{
+		ContainerUser:   "testuser",
+		WorkspaceFolder: "/workspace",
+	}
+
+	containers := []container.Summary{
+		{
+			ID:    "test123",
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				constants.DevgoManagedLabel: constants.DevgoManagedValue,
+			},
+		},
+	}
+
+	baseMockClient := &mockExecClient{
+		containers: containers,
+		execCreateResponse: container.ExecCreateResponse{
+			ID: "exec123",
+		},
+		execAttachResponse: createMockHijackedResponse(),
+	}
+
+	mockClient := &mockShellExecClient{
+		mockExecClient: baseMockClient,
+	}
+
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer)
+
+	capturedExecOptions := mockClient.capturedExecOptions
+
+	// Verify PS1 is NOT set in environment to respect container's .bashrc
+	// This aligns with README.md documentation about respecting .bashrc configuration
+	for _, env := range capturedExecOptions.Env {
+		if strings.HasPrefix(env, "PS1=") {
+			t.Errorf("PS1 should not be set in environment to respect .bashrc, but found: %q", env)
+		}
+	}
+
+	// Verify /bin/bash --login is used to source .bashrc
+	expectedCmd := []string{"/bin/bash", "--login"}
+	if len(capturedExecOptions.Cmd) != len(expectedCmd) {
+		t.Errorf("expected Cmd to be %v for proper .bashrc sourcing, got %v", expectedCmd, capturedExecOptions.Cmd)
+	} else {
+		for i, cmd := range expectedCmd {
+			if capturedExecOptions.Cmd[i] != cmd {
+				t.Errorf("expected Cmd[%d] to be %q for proper .bashrc sourcing, got %q", i, cmd, capturedExecOptions.Cmd[i])
+			}
+		}
+	}
+}
