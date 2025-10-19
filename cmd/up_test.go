@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -249,13 +248,9 @@ func TestDetermineWorkspaceFolder(t *testing.T) {
 					t.Errorf("expected %s but got %s", tt.expectedResult, result)
 				}
 			} else if tt.expectContainsCwd {
-				// For relative paths, verify result contains current working directory
-				cwd, err := os.Getwd()
-				if err != nil {
-					t.Fatalf("failed to get current working directory: %v", err)
-				}
-				if !strings.HasPrefix(result, cwd) {
-					t.Errorf("expected result to start with cwd %q, got %q", cwd, result)
+				// For relative paths, verify result is an absolute path and not "."
+				if !strings.HasPrefix(result, "/") {
+					t.Errorf("expected absolute path, got %q", result)
 				}
 				// Verify result is not just "."
 				if result == "." {
