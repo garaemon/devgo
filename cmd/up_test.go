@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -200,19 +201,35 @@ func TestRunUpCommand(t *testing.T) {
 
 func TestDetermineWorkspaceFolder(t *testing.T) {
 	tests := []struct {
-		name           string
-		workspaceFlag  string
-		expectedResult string
+		name                 string
+		workspaceFlag        string
+		devcontainerPath     string
+		expectedResult       string
+		expectContainsCwd    bool
 	}{
 		{
-			name:           "workspace folder flag provided",
-			workspaceFlag:  "/custom/workspace",
-			expectedResult: "/custom/workspace",
+			name:             "workspace folder flag provided",
+			workspaceFlag:    "/custom/workspace",
+			devcontainerPath: "/test/workspace/.devcontainer/devcontainer.json",
+			expectedResult:   "/custom/workspace",
 		},
 		{
-			name:           "no workspace folder flag",
-			workspaceFlag:  "",
-			expectedResult: "", // Will be current directory in real implementation
+			name:             "absolute path no workspace folder flag",
+			workspaceFlag:    "",
+			devcontainerPath: "/test/workspace/.devcontainer/devcontainer.json",
+			expectedResult:   "/test/workspace",
+		},
+		{
+			name:              "relative path with dot",
+			workspaceFlag:     "",
+			devcontainerPath:  "./devcontainer.json",
+			expectContainsCwd: true,
+		},
+		{
+			name:              "relative path with subdirectory",
+			workspaceFlag:     "",
+			devcontainerPath:  ".devcontainer/devcontainer.json",
+			expectContainsCwd: true,
 		},
 	}
 
@@ -225,19 +242,29 @@ func TestDetermineWorkspaceFolder(t *testing.T) {
 			// Set test value
 			workspaceFolder = tt.workspaceFlag
 
-			// Create a mock devcontainer path for testing
-			testDevcontainerPath := "/test/workspace/.devcontainer/devcontainer.json"
-			result := determineWorkspaceFolder(testDevcontainerPath)
+			result := determineWorkspaceFolder(tt.devcontainerPath)
 
 			if tt.workspaceFlag != "" {
 				if result != tt.expectedResult {
 					t.Errorf("expected %s but got %s", tt.expectedResult, result)
 				}
+			} else if tt.expectContainsCwd {
+				// For relative paths, verify result contains current working directory
+				cwd, err := os.Getwd()
+				if err != nil {
+					t.Fatalf("failed to get current working directory: %v", err)
+				}
+				if !strings.HasPrefix(result, cwd) {
+					t.Errorf("expected result to start with cwd %q, got %q", cwd, result)
+				}
+				// Verify result is not just "."
+				if result == "." {
+					t.Errorf("workspace folder should not be '.', got %q", result)
+				}
 			} else {
-				// When no workspace flag is provided, should use directory containing devcontainer
-				expected := "/test/workspace"
-				if result != expected {
-					t.Errorf("expected %s but got %s", expected, result)
+				// For absolute paths without workspace flag
+				if result != tt.expectedResult {
+					t.Errorf("expected %s but got %s", tt.expectedResult, result)
 				}
 			}
 		})
