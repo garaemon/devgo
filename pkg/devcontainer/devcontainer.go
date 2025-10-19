@@ -43,6 +43,7 @@ type DevContainer struct {
 	WorkspaceFolder      string                    `json:"workspaceFolder,omitempty"`
 	ContainerUser        string                    `json:"containerUser,omitempty"`
 	RemoteUser           string                    `json:"remoteUser,omitempty"`
+	UpdateRemoteUserUID  *bool                     `json:"updateRemoteUserUID,omitempty"`
 	ContainerEnv         map[string]string         `json:"containerEnv,omitempty"`
 	RemoteEnv            map[string]string         `json:"remoteEnv,omitempty"`
 	Mounts               []Mount                   `json:"mounts,omitempty"`
@@ -91,6 +92,24 @@ func (dc *DevContainer) GetContainerUser() string {
 		return dc.ContainerUser
 	}
 	return "root"
+}
+
+func (dc *DevContainer) ShouldUpdateRemoteUserUID() bool {
+	// Only applicable on Linux
+	// On Windows/macOS, Docker Desktop handles UID/GID mapping automatically
+	if dc.UpdateRemoteUserUID != nil {
+		return *dc.UpdateRemoteUserUID
+	}
+	// Default is true on Linux (caller should check runtime.GOOS)
+	return true
+}
+
+func (dc *DevContainer) GetTargetUser() string {
+	// Priority: RemoteUser > ContainerUser > "root"
+	if dc.RemoteUser != "" {
+		return dc.RemoteUser
+	}
+	return dc.GetContainerUser()
 }
 
 func (dc *DevContainer) GetInitializeCommandArgs() []string {
