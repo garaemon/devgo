@@ -220,8 +220,14 @@ func determineWorkspaceFolder(devcontainerPath string) string {
 	if workspaceFolder != "" {
 		return workspaceFolder
 	}
+	// Convert to absolute path first to handle relative paths correctly
+	absPath, err := filepath.Abs(devcontainerPath)
+	if err != nil {
+		// Fallback to original behavior if absolute path conversion fails
+		return filepath.Dir(filepath.Dir(devcontainerPath))
+	}
 	// Use the directory containing the devcontainer.json as the workspace
-	return filepath.Dir(filepath.Dir(devcontainerPath))
+	return filepath.Dir(filepath.Dir(absPath))
 }
 
 func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDir string) string {
