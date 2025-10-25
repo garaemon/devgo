@@ -92,7 +92,7 @@ func TestDetermineBuildContext(t *testing.T) {
 			},
 			workspaceDir:     "/workspace",
 			devcontainerPath: "/workspace/.devcontainer/devcontainer.json",
-			expected:         "/workspace",
+			expected:         "/workspace/.devcontainer",
 		},
 	}
 

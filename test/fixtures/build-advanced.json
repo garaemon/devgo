@@ -1,0 +1,22 @@
+{
+  "name": "Advanced Build Container",
+  "build": {
+    "dockerfile": "Dockerfile.multi",
+    "context": "..",
+    "args": {
+      "NODE_VERSION": "18",
+      "ENABLE_DEBUG": "true"
+    },
+    "target": "development",
+    "options": [
+      "--network=host",
+      "--add-host=host.docker.internal:host-gateway"
+    ],
+    "cacheFrom": [
+      "myregistry.io/mycache:latest",
+      "myregistry.io/mycache:dev"
+    ]
+  },
+  "workspaceFolder": "/workspace",
+  "remoteUser": "vscode"
+}

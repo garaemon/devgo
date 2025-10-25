@@ -114,8 +114,28 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 		return startContainerWithDockerCompose(ctx, devContainer, containerName, workspaceDir)
 	}
 
-	if !devContainer.HasImage() {
-		return fmt.Errorf("devcontainer must specify an image or docker compose configuration")
+	// Determine the image to use
+	imageName := devContainer.Image
+
+	// If no image is specified but build configuration exists, build the image
+	if imageName == "" && devContainer.HasBuild() {
+		devcontainerPath, err := findDevcontainerConfig(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to find devcontainer config: %w", err)
+		}
+
+		fmt.Println("No image specified, building from Dockerfile...")
+		if err := buildDevContainer(devContainer, workspaceDir, devcontainerPath); err != nil {
+			return fmt.Errorf("failed to build dev container: %w", err)
+		}
+
+		// Use the built image
+		imageName = determineImageTag(devContainer, workspaceDir)
+		devContainer.Image = imageName
+	}
+
+	if imageName == "" {
+		return fmt.Errorf("devcontainer must specify an image, build configuration, or docker compose configuration")
 	}
 
 	// TODO: Add support for --container-name option similar to devcontainer-cli runArgs

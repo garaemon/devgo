@@ -11,6 +11,9 @@ type BuildConfig struct {
 	Dockerfile string                 `json:"dockerfile,omitempty"`
 	Context    string                 `json:"context,omitempty"`
 	Args       map[string]interface{} `json:"args,omitempty"`
+	Target     string                 `json:"target,omitempty"`
+	Options    []string               `json:"options,omitempty"`
+	CacheFrom  interface{}            `json:"cacheFrom,omitempty"` // string or []string
 }
 
 type PortAttributes struct {
@@ -36,6 +39,7 @@ type Mount struct {
 type DevContainer struct {
 	Name                 string                    `json:"name,omitempty"`
 	Image                string                    `json:"image,omitempty"`
+	Dockerfile           string                    `json:"dockerFile,omitempty"` // Legacy field
 	Build                *BuildConfig              `json:"build,omitempty"`
 	DockerComposeFile    interface{}               `json:"dockerComposeFile,omitempty"`
 	Service              string                    `json:"service,omitempty"`
@@ -77,7 +81,68 @@ func (dc *DevContainer) HasImage() bool {
 }
 
 func (dc *DevContainer) HasBuild() bool {
-	return dc.Build != nil && dc.Build.Dockerfile != ""
+	// Support both new "build" field and legacy "dockerFile" field
+	if dc.Build != nil && dc.Build.Dockerfile != "" {
+		return true
+	}
+	return dc.Dockerfile != ""
+}
+
+func (dc *DevContainer) GetDockerfilePath() string {
+	// Priority: build.dockerfile > dockerFile (legacy)
+	if dc.Build != nil && dc.Build.Dockerfile != "" {
+		return dc.Build.Dockerfile
+	}
+	return dc.Dockerfile
+}
+
+func (dc *DevContainer) GetBuildContext() string {
+	if dc.Build != nil && dc.Build.Context != "" {
+		return dc.Build.Context
+	}
+	return "."
+}
+
+func (dc *DevContainer) GetBuildArgs() map[string]interface{} {
+	if dc.Build != nil {
+		return dc.Build.Args
+	}
+	return nil
+}
+
+func (dc *DevContainer) GetBuildTarget() string {
+	if dc.Build != nil {
+		return dc.Build.Target
+	}
+	return ""
+}
+
+func (dc *DevContainer) GetBuildOptions() []string {
+	if dc.Build != nil {
+		return dc.Build.Options
+	}
+	return nil
+}
+
+func (dc *DevContainer) GetBuildCacheFrom() []string {
+	if dc.Build == nil || dc.Build.CacheFrom == nil {
+		return nil
+	}
+
+	switch v := dc.Build.CacheFrom.(type) {
+	case string:
+		return []string{v}
+	case []interface{}:
+		var cacheFrom []string
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				cacheFrom = append(cacheFrom, str)
+			}
+		}
+		return cacheFrom
+	default:
+		return nil
+	}
 }
 
 func (dc *DevContainer) GetWorkspaceFolder() string {
