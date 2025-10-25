@@ -51,10 +51,28 @@ func buildDevContainer(devContainer *devcontainer.DevContainer, workspaceDir, de
 
 	buildArgs := []string{"build", "-t", imageTag, "-f", dockerfilePath}
 
-	if devContainer.Build.Args != nil {
-		for key, value := range devContainer.Build.Args {
-			buildArgs = append(buildArgs, "--build-arg", fmt.Sprintf("%s=%v", key, value))
-		}
+	// Add build arguments
+	args := devContainer.GetBuildArgs()
+	for key, value := range args {
+		buildArgs = append(buildArgs, "--build-arg", fmt.Sprintf("%s=%v", key, value))
+	}
+
+	// Add target stage for multi-stage builds
+	target := devContainer.GetBuildTarget()
+	if target != "" {
+		buildArgs = append(buildArgs, "--target", target)
+	}
+
+	// Add cache-from images
+	cacheFrom := devContainer.GetBuildCacheFrom()
+	for _, cache := range cacheFrom {
+		buildArgs = append(buildArgs, "--cache-from", cache)
+	}
+
+	// Add additional build options
+	options := devContainer.GetBuildOptions()
+	if options != nil {
+		buildArgs = append(buildArgs, options...)
 	}
 
 	buildArgs = append(buildArgs, buildContext)
@@ -81,23 +99,27 @@ func buildDevContainer(devContainer *devcontainer.DevContainer, workspaceDir, de
 }
 
 func determineDockerfilePath(devContainer *devcontainer.DevContainer, devcontainerPath string) string {
-	if devContainer.Build.Dockerfile != "" {
-		if filepath.IsAbs(devContainer.Build.Dockerfile) {
-			return devContainer.Build.Dockerfile
-		}
-		return filepath.Join(filepath.Dir(devcontainerPath), devContainer.Build.Dockerfile)
+	dockerfilePath := devContainer.GetDockerfilePath()
+	if dockerfilePath == "" {
+		return filepath.Join(filepath.Dir(devcontainerPath), "Dockerfile")
 	}
-	return filepath.Join(filepath.Dir(devcontainerPath), "Dockerfile")
+
+	if filepath.IsAbs(dockerfilePath) {
+		return dockerfilePath
+	}
+	return filepath.Join(filepath.Dir(devcontainerPath), dockerfilePath)
 }
 
 func determineBuildContext(devContainer *devcontainer.DevContainer, workspaceDir, devcontainerPath string) string {
-	if devContainer.Build.Context != "" {
-		if filepath.IsAbs(devContainer.Build.Context) {
-			return devContainer.Build.Context
-		}
-		return filepath.Join(filepath.Dir(devcontainerPath), devContainer.Build.Context)
+	context := devContainer.GetBuildContext()
+	if context == "" || context == "." {
+		return filepath.Dir(devcontainerPath)
 	}
-	return workspaceDir
+
+	if filepath.IsAbs(context) {
+		return context
+	}
+	return filepath.Join(filepath.Dir(devcontainerPath), context)
 }
 
 func determineImageTag(devContainer *devcontainer.DevContainer, workspaceDir string) string {

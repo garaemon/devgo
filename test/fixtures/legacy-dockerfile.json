@@ -1,0 +1,6 @@
+{
+  "name": "Legacy Dockerfile Container",
+  "dockerFile": "Dockerfile",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "node"
+}

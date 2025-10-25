@@ -1328,3 +1328,340 @@ func TestGetTargetUser(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_AdvancedBuild(t *testing.T) {
+	fixturePath := filepath.Join("..", "..", "test", "fixtures", "build-advanced.json")
+
+	dc, err := Parse(fixturePath)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if dc.Name != "Advanced Build Container" {
+		t.Errorf("Name = %v, want %v", dc.Name, "Advanced Build Container")
+	}
+
+	if dc.Build == nil {
+		t.Fatal("Build should not be nil")
+	}
+
+	if dc.Build.Dockerfile != "Dockerfile.multi" {
+		t.Errorf("Build.Dockerfile = %v, want %v", dc.Build.Dockerfile, "Dockerfile.multi")
+	}
+
+	if dc.Build.Context != ".." {
+		t.Errorf("Build.Context = %v, want %v", dc.Build.Context, "..")
+	}
+
+	if dc.Build.Target != "development" {
+		t.Errorf("Build.Target = %v, want %v", dc.Build.Target, "development")
+	}
+
+	if len(dc.Build.Options) != 2 {
+		t.Errorf("Build.Options length = %v, want %v", len(dc.Build.Options), 2)
+	}
+
+	cacheFrom := dc.GetBuildCacheFrom()
+	if len(cacheFrom) != 2 {
+		t.Errorf("GetBuildCacheFrom() length = %v, want %v", len(cacheFrom), 2)
+	}
+}
+
+func TestParse_LegacyDockerfile(t *testing.T) {
+	fixturePath := filepath.Join("..", "..", "test", "fixtures", "legacy-dockerfile.json")
+
+	dc, err := Parse(fixturePath)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if dc.Name != "Legacy Dockerfile Container" {
+		t.Errorf("Name = %v, want %v", dc.Name, "Legacy Dockerfile Container")
+	}
+
+	if !dc.HasBuild() {
+		t.Error("HasBuild() should return true for legacy dockerFile field")
+	}
+
+	if dc.Dockerfile != "Dockerfile" {
+		t.Errorf("Dockerfile = %v, want %v", dc.Dockerfile, "Dockerfile")
+	}
+
+	dockerfilePath := dc.GetDockerfilePath()
+	if dockerfilePath != "Dockerfile" {
+		t.Errorf("GetDockerfilePath() = %v, want %v", dockerfilePath, "Dockerfile")
+	}
+}
+
+func TestGetDockerfilePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected string
+	}{
+		{
+			name: "build.dockerfile takes priority",
+			dc: DevContainer{
+				Dockerfile: "legacy.Dockerfile",
+				Build:      &BuildConfig{Dockerfile: "new.Dockerfile"},
+			},
+			expected: "new.Dockerfile",
+		},
+		{
+			name: "legacy dockerFile when build is nil",
+			dc: DevContainer{
+				Dockerfile: "legacy.Dockerfile",
+			},
+			expected: "legacy.Dockerfile",
+		},
+		{
+			name: "legacy dockerFile when build.dockerfile is empty",
+			dc: DevContainer{
+				Dockerfile: "legacy.Dockerfile",
+				Build:      &BuildConfig{Context: "."},
+			},
+			expected: "legacy.Dockerfile",
+		},
+		{
+			name:     "empty when both are not set",
+			dc:       DevContainer{},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.GetDockerfilePath()
+			if got != tt.expected {
+				t.Errorf("GetDockerfilePath() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetBuildContext(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected string
+	}{
+		{
+			name: "custom context",
+			dc: DevContainer{
+				Build: &BuildConfig{Context: ".."},
+			},
+			expected: "..",
+		},
+		{
+			name:     "default context when build is nil",
+			dc:       DevContainer{},
+			expected: ".",
+		},
+		{
+			name: "default context when build.context is empty",
+			dc: DevContainer{
+				Build: &BuildConfig{Dockerfile: "Dockerfile"},
+			},
+			expected: ".",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.GetBuildContext()
+			if got != tt.expected {
+				t.Errorf("GetBuildContext() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetBuildTarget(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected string
+	}{
+		{
+			name: "has target",
+			dc: DevContainer{
+				Build: &BuildConfig{Target: "development"},
+			},
+			expected: "development",
+		},
+		{
+			name:     "no build config",
+			dc:       DevContainer{},
+			expected: "",
+		},
+		{
+			name: "empty target",
+			dc: DevContainer{
+				Build: &BuildConfig{Dockerfile: "Dockerfile"},
+			},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.GetBuildTarget()
+			if got != tt.expected {
+				t.Errorf("GetBuildTarget() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetBuildOptions(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected []string
+	}{
+		{
+			name: "has options",
+			dc: DevContainer{
+				Build: &BuildConfig{
+					Options: []string{"--network=host", "--add-host=host.docker.internal:host-gateway"},
+				},
+			},
+			expected: []string{"--network=host", "--add-host=host.docker.internal:host-gateway"},
+		},
+		{
+			name:     "no build config",
+			dc:       DevContainer{},
+			expected: nil,
+		},
+		{
+			name: "empty options",
+			dc: DevContainer{
+				Build: &BuildConfig{Dockerfile: "Dockerfile"},
+			},
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.GetBuildOptions()
+			if len(got) != len(tt.expected) {
+				t.Errorf("GetBuildOptions() length = %v, want %v", len(got), len(tt.expected))
+				return
+			}
+			for i, opt := range got {
+				if opt != tt.expected[i] {
+					t.Errorf("GetBuildOptions()[%d] = %v, want %v", i, opt, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestGetBuildCacheFrom(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected []string
+	}{
+		{
+			name: "string cacheFrom",
+			dc: DevContainer{
+				Build: &BuildConfig{
+					CacheFrom: "myregistry.io/mycache:latest",
+				},
+			},
+			expected: []string{"myregistry.io/mycache:latest"},
+		},
+		{
+			name: "array cacheFrom",
+			dc: DevContainer{
+				Build: &BuildConfig{
+					CacheFrom: []interface{}{
+						"myregistry.io/mycache:latest",
+						"myregistry.io/mycache:dev",
+					},
+				},
+			},
+			expected: []string{"myregistry.io/mycache:latest", "myregistry.io/mycache:dev"},
+		},
+		{
+			name:     "no build config",
+			dc:       DevContainer{},
+			expected: nil,
+		},
+		{
+			name: "nil cacheFrom",
+			dc: DevContainer{
+				Build: &BuildConfig{Dockerfile: "Dockerfile"},
+			},
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.dc.GetBuildCacheFrom()
+			if len(got) != len(tt.expected) {
+				t.Errorf("GetBuildCacheFrom() length = %v, want %v", len(got), len(tt.expected))
+				return
+			}
+			for i, cache := range got {
+				if cache != tt.expected[i] {
+					t.Errorf("GetBuildCacheFrom()[%d] = %v, want %v", i, cache, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestHasBuild_WithLegacyDockerfile(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected bool
+	}{
+		{
+			name: "has build.dockerfile",
+			dc: DevContainer{
+				Build: &BuildConfig{Dockerfile: "Dockerfile"},
+			},
+			expected: true,
+		},
+		{
+			name: "has legacy dockerFile",
+			dc: DevContainer{
+				Dockerfile: "Dockerfile",
+			},
+			expected: true,
+		},
+		{
+			name: "both build.dockerfile and legacy dockerFile (build takes priority)",
+			dc: DevContainer{
+				Dockerfile: "legacy.Dockerfile",
+				Build:      &BuildConfig{Dockerfile: "new.Dockerfile"},
+			},
+			expected: true,
+		},
+		{
+			name:     "no build or dockerFile",
+			dc:       DevContainer{},
+			expected: false,
+		},
+		{
+			name: "build without dockerfile",
+			dc: DevContainer{
+				Build: &BuildConfig{Context: "."},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.dc.HasBuild(); got != tt.expected {
+				t.Errorf("HasBuild() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
