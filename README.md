@@ -160,6 +160,19 @@ Options:
 - Runs as the configured container user
 - Sets appropriate working directory
 - Handles signal forwarding (Ctrl+C, etc.)
+- Custom detach keys to preserve readline functionality
+
+**Detach Keys:**
+
+By default, Docker uses `Ctrl+P, Ctrl+Q` as detach keys, which conflicts with bash's readline command history navigation (`Ctrl+P` for previous command). To resolve this, `devgo shell` uses `Ctrl+@` (null character) as the detach key instead, allowing:
+
+- **`Ctrl+P`** - Navigate to previous command in history (works correctly)
+- **`Ctrl+N`** - Navigate to next command in history
+- **`Ctrl+R`** - Reverse search through command history
+- **Arrow keys** - Full cursor movement and history navigation
+- **Tab** - Command and filename completion
+
+If you need to detach from the shell session, you can press `Ctrl+@` (which typically doesn't produce a visible character on most terminals). However, since `devgo shell` is designed for interactive use, it's recommended to simply type `exit` to leave the shell session normally.
 
 **Shell Prompt Behavior:**
 
