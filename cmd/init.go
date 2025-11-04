@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,12 +35,7 @@ func runInitCommand(args []string) error {
 	template := createDefaultTemplate()
 
 	// Write to file
-	data, err := json.MarshalIndent(template, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal template: %w", err)
-	}
-
-	if err := os.WriteFile(devcontainerPath, data, 0644); err != nil {
+	if err := os.WriteFile(devcontainerPath, []byte(template), 0644); err != nil {
 		return fmt.Errorf("failed to write devcontainer.json: %w", err)
 	}
 
@@ -99,17 +93,68 @@ func findGitRoot() (string, error) {
 	return gitRoot, nil
 }
 
-func createDefaultTemplate() map[string]interface{} {
-	return map[string]interface{}{
-		"name":  "Development Container",
-		"image": "ghcr.io/garaemon/ubuntu-noble:latest",
-		"features": map[string]interface{}{},
-		"customizations": map[string]interface{}{
-			"vscode": map[string]interface{}{
-				"extensions": []string{},
-			},
-		},
-		"forwardPorts":      []interface{}{},
-		"postCreateCommand": "",
-	}
+func createDefaultTemplate() string {
+	return `{
+  "name": "Development Container",
+  "image": "ghcr.io/garaemon/ubuntu-noble:latest",
+
+  // Container build configuration
+  // "dockerFile": "Dockerfile",
+  // "build": {
+  //   "dockerfile": "Dockerfile",
+  //   "context": "..",
+  //   "args": { }
+  // },
+
+  // Docker Compose configuration
+  // "dockerComposeFile": "docker-compose.yml",
+  // "service": "app",
+  // "runServices": ["db", "redis"],
+
+  // Workspace configuration
+  // "workspaceFolder": "/workspace",
+  // "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+
+  // Additional mounts
+  // "mounts": [
+  //   "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  // ],
+
+  // Environment variables
+  // "containerEnv": {
+  //   "MY_VAR": "value"
+  // },
+
+  // User configuration
+  // "remoteUser": "vscode",
+  // "containerUser": "vscode",
+  // "updateRemoteUserUID": true,
+
+  // Lifecycle commands (host-side)
+  // "initializeCommand": "echo 'Host initialization'",
+
+  // Lifecycle commands (container-side)
+  // "onCreateCommand": "echo 'Container created'",
+  // "updateContentCommand": "echo 'Content updated'",
+  // "postCreateCommand": "echo 'Post-create setup'",
+  // "postStartCommand": "echo 'Container started'",
+  // "postAttachCommand": "echo 'Attached to container'",
+
+  // Control command execution order
+  // "waitFor": "updateContentCommand",
+
+  // Features to install
+  "features": {},
+
+  // VSCode customizations
+  "customizations": {
+    "vscode": {
+      "extensions": []
+    }
+  },
+
+  // Port forwarding
+  "forwardPorts": []
+}
+`
 }
