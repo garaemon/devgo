@@ -6,6 +6,7 @@ A Go CLI tool that runs Docker containers based on devcontainer.json configurati
 
 ### ✅ Fully Implemented Commands
 
+- **`devgo init`** - Initialize a new devcontainer.json template
 - **`devgo up`** - Create and run dev containers with full lifecycle support
 - **`devgo build`** - Build dev container images (Dockerfile and Docker Compose)
 - **`devgo exec`** - Execute commands in running containers
@@ -63,6 +64,23 @@ devgo --help
 
 ## Quick Start
 
+### Starting from Scratch
+
+1. **Initialize a new devcontainer configuration**:
+   ```bash
+   cd /path/to/your/project
+   devgo init
+   ```
+
+2. **Edit the generated `.devcontainer/devcontainer.json` as needed**
+
+3. **Start the dev container**:
+   ```bash
+   devgo up
+   ```
+
+### Using an Existing devcontainer.json
+
 1. **Navigate to a project with a devcontainer.json**:
    ```bash
    cd /path/to/your/project
@@ -90,6 +108,44 @@ devgo --help
    ```
 
 ## Command Reference
+
+### `devgo init`
+
+Initializes a new devcontainer.json template in the project.
+
+```bash
+devgo init [directory]
+
+Arguments:
+  directory    Target directory (optional, defaults to git root or current directory)
+```
+
+**Features:**
+- Creates `.devcontainer/` directory if it doesn't exist
+- Generates a basic `devcontainer.json` template
+- Uses `ghcr.io/garaemon/ubuntu-noble:latest` as the default image
+- Defaults to git repository root, or current directory if not in a git repo
+- Optionally accepts a custom directory path
+
+**Examples:**
+```bash
+# Initialize in git root directory
+devgo init
+
+# Initialize in specific directory
+devgo init /path/to/project
+
+# Initialize in current directory (when not in git repo)
+devgo init .
+```
+
+**Template Contents:**
+
+The generated template includes:
+- Default Ubuntu Noble base image
+- Basic VSCode customization structure
+- Common configuration properties
+- Ready-to-customize sections for features and extensions
 
 ### `devgo up`
 

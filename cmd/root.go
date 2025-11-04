@@ -114,6 +114,8 @@ func Execute() error {
 		return runUserCommandsCommand(commandArgs)
 	case "read-configuration":
 		return runReadConfigurationCommand(commandArgs)
+	case "init":
+		return runInitCommand(commandArgs)
 	default:
 		return runDevContainer(args)
 	}
@@ -135,6 +137,7 @@ Commands:
   list                    List all devgo containers
   run-user-commands       Run user commands in container
   read-configuration      Output current workspace configuration
+  init [directory]        Initialize devcontainer.json template
 
 Flags:
   --config string
