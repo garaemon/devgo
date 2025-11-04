@@ -109,8 +109,7 @@ func createDefaultTemplate() map[string]interface{} {
 				"extensions": []string{},
 			},
 		},
-		"forwardPorts": []interface{}{},
+		"forwardPorts":      []interface{}{},
 		"postCreateCommand": "",
-		"remoteUser": "vscode",
 	}
 }

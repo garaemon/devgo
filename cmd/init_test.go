@@ -13,7 +13,7 @@ func TestCreateDefaultTemplate(t *testing.T) {
 	template := createDefaultTemplate()
 
 	// Test that the template has all required fields
-	expectedFields := []string{"name", "image", "features", "customizations", "forwardPorts", "postCreateCommand", "remoteUser"}
+	expectedFields := []string{"name", "image", "features", "customizations", "forwardPorts", "postCreateCommand"}
 
 	for _, field := range expectedFields {
 		if _, ok := template[field]; !ok {
@@ -28,10 +28,6 @@ func TestCreateDefaultTemplate(t *testing.T) {
 
 	if template["image"] != "ghcr.io/garaemon/ubuntu-noble:latest" {
 		t.Errorf("expected image to be 'ghcr.io/garaemon/ubuntu-noble:latest', got %v", template["image"])
-	}
-
-	if template["remoteUser"] != "vscode" {
-		t.Errorf("expected remoteUser to be 'vscode', got %v", template["remoteUser"])
 	}
 
 	// Verify the template is valid JSON when marshaled
