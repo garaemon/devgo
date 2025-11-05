@@ -139,10 +139,3 @@ func TestInitializeCommandIntegration(t *testing.T) {
 		})
 	}
 }
-
-// buildExpectedContainerName builds the expected container name based on workspace directory
-func buildExpectedContainerName(workspaceDir string) string {
-	pathHash := cmd.GeneratePathHash(workspaceDir)
-	baseName := filepath.Base(workspaceDir)
-	return fmt.Sprintf("devgo-%s-%s-default", pathHash, baseName)
-}

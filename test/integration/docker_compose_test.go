@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/garaemon/devgo/cmd"
+	devgocmd "github.com/garaemon/devgo/cmd"
 )
 
 // TestDockerComposeIntegration tests the up command with Docker Compose
@@ -81,7 +81,7 @@ services:
 				cleanupDockerCompose(t, tempDir)
 			},
 			validateContainer: func(t *testing.T, tempDir string) {
-				pathHash := cmd.GeneratePathHash(tempDir)
+				pathHash := devgocmd.GeneratePathHash(tempDir)
 				projectName := filepath.Base(tempDir)
 				containerName := fmt.Sprintf("%s-%s-app-1", pathHash, projectName)
 				if !isContainerRunning(t, containerName) {
@@ -103,7 +103,7 @@ services:
 				cleanupDockerCompose(t, tempDir)
 			},
 			validateContainer: func(t *testing.T, tempDir string) {
-				pathHash := cmd.GeneratePathHash(tempDir)
+				pathHash := devgocmd.GeneratePathHash(tempDir)
 				projectName := filepath.Base(tempDir)
 				appContainer := fmt.Sprintf("%s-%s-app-1", pathHash, projectName)
 				redisContainer := fmt.Sprintf("%s-%s-redis-1", pathHash, projectName)
@@ -305,7 +305,7 @@ services:
 	time.Sleep(5 * time.Second)
 
 	// Validate containers
-	pathHash := cmd.GeneratePathHash(tempDir)
+	pathHash := devgocmd.GeneratePathHash(tempDir)
 	projectName := filepath.Base(tempDir)
 	appContainer := fmt.Sprintf("%s-%s-app-1", pathHash, projectName)
 	dbContainer := fmt.Sprintf("%s-%s-db-1", pathHash, projectName)
@@ -338,7 +338,7 @@ func cleanupDockerCompose(t *testing.T, projectDir string) {
 	}
 
 	// Also try to clean up individual containers by project name
-	pathHash := cmd.GeneratePathHash(projectDir)
+	pathHash := devgocmd.GeneratePathHash(projectDir)
 	projectName := filepath.Base(projectDir)
 	containers := []string{
 		fmt.Sprintf("%s-%s-app-1", pathHash, projectName),
