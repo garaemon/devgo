@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	devgocmd "github.com/garaemon/devgo/cmd"
 )
 
 // TestDockerComposeIntegration tests the up command with Docker Compose
