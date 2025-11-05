@@ -81,9 +81,8 @@ services:
 				cleanupDockerCompose(t, tempDir)
 			},
 			validateContainer: func(t *testing.T, tempDir string) {
-				pathHash := devgocmd.GeneratePathHash(tempDir)
 				projectName := filepath.Base(tempDir)
-				containerName := fmt.Sprintf("%s-%s-app-1", pathHash, projectName)
+				containerName := fmt.Sprintf("%s-app-1", projectName)
 				if !isContainerRunning(t, containerName) {
 					t.Errorf("Expected container '%s' to be running", containerName)
 				}
@@ -103,10 +102,9 @@ services:
 				cleanupDockerCompose(t, tempDir)
 			},
 			validateContainer: func(t *testing.T, tempDir string) {
-				pathHash := devgocmd.GeneratePathHash(tempDir)
 				projectName := filepath.Base(tempDir)
-				appContainer := fmt.Sprintf("%s-%s-app-1", pathHash, projectName)
-				redisContainer := fmt.Sprintf("%s-%s-redis-1", pathHash, projectName)
+				appContainer := fmt.Sprintf("%s-app-1", projectName)
+				redisContainer := fmt.Sprintf("%s-redis-1", projectName)
 
 				if !isContainerRunning(t, appContainer) {
 					t.Errorf("Expected app container '%s' to be running", appContainer)
@@ -305,10 +303,9 @@ services:
 	time.Sleep(5 * time.Second)
 
 	// Validate containers
-	pathHash := devgocmd.GeneratePathHash(tempDir)
 	projectName := filepath.Base(tempDir)
-	appContainer := fmt.Sprintf("%s-%s-app-1", pathHash, projectName)
-	dbContainer := fmt.Sprintf("%s-%s-db-1", pathHash, projectName)
+	appContainer := fmt.Sprintf("%s-app-1", projectName)
+	dbContainer := fmt.Sprintf("%s-db-1", projectName)
 
 	if !isContainerRunning(t, appContainer) {
 		t.Errorf("Expected app container '%s' to be running", appContainer)
@@ -338,12 +335,11 @@ func cleanupDockerCompose(t *testing.T, projectDir string) {
 	}
 
 	// Also try to clean up individual containers by project name
-	pathHash := devgocmd.GeneratePathHash(projectDir)
 	projectName := filepath.Base(projectDir)
 	containers := []string{
-		fmt.Sprintf("%s-%s-app-1", pathHash, projectName),
-		fmt.Sprintf("%s-%s-redis-1", pathHash, projectName),
-		fmt.Sprintf("%s-%s-db-1", pathHash, projectName),
+		fmt.Sprintf("%s-app-1", projectName),
+		fmt.Sprintf("%s-redis-1", projectName),
+		fmt.Sprintf("%s-db-1", projectName),
 	}
 
 	for _, containerName := range containers {
