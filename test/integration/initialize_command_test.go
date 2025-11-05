@@ -2,15 +2,12 @@ package integration
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/garaemon/devgo/cmd"
 )
 
 func TestInitializeCommandIntegration(t *testing.T) {
