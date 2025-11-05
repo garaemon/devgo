@@ -2,12 +2,15 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/garaemon/devgo/cmd"
 )
 
 func TestInitializeCommandIntegration(t *testing.T) {
@@ -95,7 +98,7 @@ func TestInitializeCommandIntegration(t *testing.T) {
 			defer os.Remove(devgoBinary)
 
 			// Pre-cleanup any existing containers
-			containerName := "devgo-" + filepath.Base(tempDir) + "-default"
+			containerName := buildExpectedContainerName(tempDir)
 			cleanupContainer(t, containerName)
 			defer cleanupContainer(t, containerName)
 
@@ -135,4 +138,11 @@ func TestInitializeCommandIntegration(t *testing.T) {
 			}
 		})
 	}
+}
+
+// buildExpectedContainerName builds the expected container name based on workspace directory
+func buildExpectedContainerName(workspaceDir string) string {
+	pathHash := cmd.GeneratePathHash(workspaceDir)
+	baseName := filepath.Base(workspaceDir)
+	return fmt.Sprintf("devgo-%s-%s-default", pathHash, baseName)
 }

@@ -2,11 +2,14 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/garaemon/devgo/cmd"
 )
 
 // TestDockerComposeIntegration tests the up command with Docker Compose
@@ -78,8 +81,9 @@ services:
 				cleanupDockerCompose(t, tempDir)
 			},
 			validateContainer: func(t *testing.T, tempDir string) {
+				pathHash := cmd.GeneratePathHash(tempDir)
 				projectName := filepath.Base(tempDir)
-				containerName := projectName + "-app-1"
+				containerName := fmt.Sprintf("%s-%s-app-1", pathHash, projectName)
 				if !isContainerRunning(t, containerName) {
 					t.Errorf("Expected container '%s' to be running", containerName)
 				}
@@ -99,10 +103,11 @@ services:
 				cleanupDockerCompose(t, tempDir)
 			},
 			validateContainer: func(t *testing.T, tempDir string) {
+				pathHash := cmd.GeneratePathHash(tempDir)
 				projectName := filepath.Base(tempDir)
-				appContainer := projectName + "-app-1"
-				redisContainer := projectName + "-redis-1"
-				
+				appContainer := fmt.Sprintf("%s-%s-app-1", pathHash, projectName)
+				redisContainer := fmt.Sprintf("%s-%s-redis-1", pathHash, projectName)
+
 				if !isContainerRunning(t, appContainer) {
 					t.Errorf("Expected app container '%s' to be running", appContainer)
 				}
@@ -300,9 +305,10 @@ services:
 	time.Sleep(5 * time.Second)
 
 	// Validate containers
+	pathHash := cmd.GeneratePathHash(tempDir)
 	projectName := filepath.Base(tempDir)
-	appContainer := projectName + "-app-1"
-	dbContainer := projectName + "-db-1"
+	appContainer := fmt.Sprintf("%s-%s-app-1", pathHash, projectName)
+	dbContainer := fmt.Sprintf("%s-%s-db-1", pathHash, projectName)
 
 	if !isContainerRunning(t, appContainer) {
 		t.Errorf("Expected app container '%s' to be running", appContainer)
@@ -332,11 +338,12 @@ func cleanupDockerCompose(t *testing.T, projectDir string) {
 	}
 
 	// Also try to clean up individual containers by project name
+	pathHash := cmd.GeneratePathHash(projectDir)
 	projectName := filepath.Base(projectDir)
 	containers := []string{
-		projectName + "-app-1",
-		projectName + "-redis-1",
-		projectName + "-db-1",
+		fmt.Sprintf("%s-%s-app-1", pathHash, projectName),
+		fmt.Sprintf("%s-%s-redis-1", pathHash, projectName),
+		fmt.Sprintf("%s-%s-db-1", pathHash, projectName),
 	}
 
 	for _, containerName := range containers {

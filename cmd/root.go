@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -233,6 +235,14 @@ func determineWorkspaceFolder(devcontainerPath string) string {
 	return filepath.Dir(filepath.Dir(absPath))
 }
 
+// GeneratePathHash generates a short hash from the given path for container naming
+func GeneratePathHash(path string) string {
+	h := sha256.New()
+	h.Write([]byte(path))
+	hash := hex.EncodeToString(h.Sum(nil))
+	return hash[:8]
+}
+
 func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDir string) string {
 	if containerName != "" {
 		return containerName
@@ -246,15 +256,17 @@ func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDi
 	// For docker compose, use service name with project prefix
 	if devContainer.HasDockerCompose() && devContainer.GetService() != "" {
 		projectName := filepath.Base(workspaceDir)
-		return fmt.Sprintf("%s-%s-1", projectName, devContainer.GetService())
+		pathHash := GeneratePathHash(workspaceDir)
+		return fmt.Sprintf("%s-%s-%s-1", pathHash, projectName, devContainer.GetService())
 	}
 
+	pathHash := GeneratePathHash(workspaceDir)
 	baseName := ""
 	if devContainer.Name != "" {
 		baseName = devContainer.Name
 	} else {
-		baseName = fmt.Sprintf("devgo-%s", filepath.Base(workspaceDir))
+		baseName = filepath.Base(workspaceDir)
 	}
 
-	return fmt.Sprintf("%s-%s", baseName, session)
+	return fmt.Sprintf("devgo-%s-%s-%s", pathHash, baseName, session)
 }
