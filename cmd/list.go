@@ -3,7 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -50,8 +52,18 @@ func listDevgoContainers(ctx context.Context, cli DockerListClient) error {
 		return nil
 	}
 
-	fmt.Printf("%-20s %-12s %-15s %-20s %-10s %s\n", "NAME", "SESSION", "STATUS", "IMAGE", "CREATED", "WORKSPACE")
-	fmt.Println(strings.Repeat("-", 90))
+	// Create a new tabwriter with proper column alignment
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+	// Print header
+	if _, err := fmt.Fprintln(w, "NAME\tSESSION\tSTATUS\tIMAGE\tCREATED\tWORKSPACE"); err != nil {
+		return fmt.Errorf("failed to write header: %w", err)
+	}
+	if _, err := fmt.Fprintln(w, strings.Repeat("-", 20)+"\t"+strings.Repeat("-", 12)+"\t"+
+		strings.Repeat("-", 15)+"\t"+strings.Repeat("-", 20)+"\t"+
+		strings.Repeat("-", 10)+"\t"+strings.Repeat("-", 20)); err != nil {
+		return fmt.Errorf("failed to write separator: %w", err)
+	}
 
 	for _, c := range containers {
 		name := getContainerName(c.Names)
@@ -61,7 +73,13 @@ func listDevgoContainers(ctx context.Context, cli DockerListClient) error {
 		created := time.Unix(c.Created, 0).Format("2006-01-02")
 		workspace := getWorkspaceFromLabels(c.Labels)
 
-		fmt.Printf("%-20s %-12s %-15s %-20s %-10s %s\n", name, session, status, image, created, workspace)
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", name, session, status, image, created, workspace); err != nil {
+			return fmt.Errorf("failed to write container info: %w", err)
+		}
+	}
+
+	if err := w.Flush(); err != nil {
+		return fmt.Errorf("failed to flush output: %w", err)
 	}
 
 	return nil

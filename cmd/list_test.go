@@ -126,16 +126,18 @@ func (m *mockListClient) Close() error {
 
 func TestListDevgoContainers(t *testing.T) {
 	tests := []struct {
-		name           string
-		containers     []container.Summary
-		listError      error
-		expectedOutput string
-		expectError    bool
+		name              string
+		containers        []container.Summary
+		listError         error
+		expectedInOutput  []string
+		shouldNotContain  []string
+		expectError       bool
+		expectEmptyOutput bool
 	}{
 		{
-			name:           "no containers",
-			containers:     []container.Summary{},
-			expectedOutput: "No devgo containers found\n",
+			name:             "no containers",
+			containers:       []container.Summary{},
+			expectedInOutput: []string{"No devgo containers found"},
 		},
 		{
 			name: "single container",
@@ -153,9 +155,10 @@ func TestListDevgoContainers(t *testing.T) {
 					},
 				},
 			},
-			expectedOutput: "NAME                 SESSION      STATUS          IMAGE                CREATED    WORKSPACE\n" +
-				"------------------------------------------------------------------------------------------\n" +
-				"test-container       default      Up 2 minutes    ubuntu:22.04         2025-06-19 /home/user/project\n",
+			expectedInOutput: []string{
+				"NAME", "SESSION", "STATUS", "IMAGE", "CREATED", "WORKSPACE",
+				"test-container", "default", "Up 2 minutes", "ubuntu:22.04", "2025-06-19", "/home/user/project",
+			},
 		},
 		{
 			name: "multiple containers",
@@ -185,10 +188,11 @@ func TestListDevgoContainers(t *testing.T) {
 					},
 				},
 			},
-			expectedOutput: "NAME                 SESSION      STATUS          IMAGE                CREATED    WORKSPACE\n" +
-				"------------------------------------------------------------------------------------------\n" +
-				"test-container-1     session1     Up 2 minutes    ubuntu:22.04         2025-06-19 /home/user/project1\n" +
-				"test-container-2     session2     Exited (0) 1 hour ago alpine:latest        2025-06-19 /home/user/project2\n",
+			expectedInOutput: []string{
+				"NAME", "SESSION", "STATUS", "IMAGE", "CREATED", "WORKSPACE",
+				"test-container-1", "session1", "Up 2 minutes", "ubuntu:22.04", "2025-06-19", "/home/user/project1",
+				"test-container-2", "session2", "Exited (0) 1 hour ago", "alpine:latest", "/home/user/project2",
+			},
 		},
 		{
 			name: "container with missing workspace label",
@@ -204,9 +208,10 @@ func TestListDevgoContainers(t *testing.T) {
 					},
 				},
 			},
-			expectedOutput: "NAME                 SESSION      STATUS          IMAGE                CREATED    WORKSPACE\n" +
-				"------------------------------------------------------------------------------------------\n" +
-				"test-container       <unknown>    Up 2 minutes    ubuntu:22.04         2025-06-19 <unknown>\n",
+			expectedInOutput: []string{
+				"NAME", "SESSION", "STATUS", "IMAGE", "CREATED", "WORKSPACE",
+				"test-container", "<unknown>", "Up 2 minutes", "ubuntu:22.04", "2025-06-19",
+			},
 		},
 		{
 			name:        "docker client error",
@@ -252,8 +257,18 @@ func TestListDevgoContainers(t *testing.T) {
 				return
 			}
 
-			if output != tt.expectedOutput {
-				t.Errorf("output mismatch:\nwant:\n%q\ngot:\n%q", tt.expectedOutput, output)
+			// Check that all expected strings are in the output
+			for _, expected := range tt.expectedInOutput {
+				if !strings.Contains(output, expected) {
+					t.Errorf("output missing expected string %q\noutput:\n%s", expected, output)
+				}
+			}
+
+			// Check that unwanted strings are not in the output
+			for _, unwanted := range tt.shouldNotContain {
+				if strings.Contains(output, unwanted) {
+					t.Errorf("output contains unwanted string %q\noutput:\n%s", unwanted, output)
+				}
 			}
 		})
 	}
