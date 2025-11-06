@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,7 +80,7 @@ services:
 			},
 			validateContainer: func(t *testing.T, tempDir string) {
 				projectName := filepath.Base(tempDir)
-				containerName := projectName + "-app-1"
+				containerName := fmt.Sprintf("%s-app-1", projectName)
 				if !isContainerRunning(t, containerName) {
 					t.Errorf("Expected container '%s' to be running", containerName)
 				}
@@ -100,9 +101,9 @@ services:
 			},
 			validateContainer: func(t *testing.T, tempDir string) {
 				projectName := filepath.Base(tempDir)
-				appContainer := projectName + "-app-1"
-				redisContainer := projectName + "-redis-1"
-				
+				appContainer := fmt.Sprintf("%s-app-1", projectName)
+				redisContainer := fmt.Sprintf("%s-redis-1", projectName)
+
 				if !isContainerRunning(t, appContainer) {
 					t.Errorf("Expected app container '%s' to be running", appContainer)
 				}
@@ -301,8 +302,8 @@ services:
 
 	// Validate containers
 	projectName := filepath.Base(tempDir)
-	appContainer := projectName + "-app-1"
-	dbContainer := projectName + "-db-1"
+	appContainer := fmt.Sprintf("%s-app-1", projectName)
+	dbContainer := fmt.Sprintf("%s-db-1", projectName)
 
 	if !isContainerRunning(t, appContainer) {
 		t.Errorf("Expected app container '%s' to be running", appContainer)
@@ -334,9 +335,9 @@ func cleanupDockerCompose(t *testing.T, projectDir string) {
 	// Also try to clean up individual containers by project name
 	projectName := filepath.Base(projectDir)
 	containers := []string{
-		projectName + "-app-1",
-		projectName + "-redis-1",
-		projectName + "-db-1",
+		fmt.Sprintf("%s-app-1", projectName),
+		fmt.Sprintf("%s-redis-1", projectName),
+		fmt.Sprintf("%s-db-1", projectName),
 	}
 
 	for _, containerName := range containers {

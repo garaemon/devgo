@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/garaemon/devgo/cmd"
 )
 
 // TestUpCommandIntegration tests the up command with actual Docker
@@ -63,7 +65,7 @@ func TestUpCommandIntegration(t *testing.T) {
 			workingDir:  tempDir,
 			expectError: false,
 			cleanup: func() {
-				containerName := "devgo-" + filepath.Base(tempDir) + "-default"
+				containerName := buildExpectedContainerName(tempDir)
 				cleanupContainer(t, containerName)
 			},
 		},
@@ -72,7 +74,7 @@ func TestUpCommandIntegration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Pre-cleanup any existing containers
-			containerName := "devgo-" + filepath.Base(tt.workingDir) + "-default"
+			containerName := buildExpectedContainerName(tt.workingDir)
 			cleanupContainer(t, containerName)
 
 			// Ensure cleanup happens
@@ -148,7 +150,7 @@ func TestUpCommandWithExistingContainer(t *testing.T) {
 	devgoBinary := buildDevgoBinary(t)
 	defer os.Remove(devgoBinary)
 
-	containerName := "devgo-" + filepath.Base(tempDir) + "-default"
+	containerName := buildExpectedContainerName(tempDir)
 	// Clean up any existing containers first
 	cleanupContainer(t, containerName)
 	defer cleanupContainer(t, containerName)
@@ -210,9 +212,15 @@ func TestUpCommandWithExistingContainer(t *testing.T) {
 
 // Helper functions
 
+func buildExpectedContainerName(workspaceDir string) string {
+	pathHash := cmd.GeneratePathHash(workspaceDir)
+	baseName := filepath.Base(workspaceDir)
+	return fmt.Sprintf("%s-default-%s", baseName, pathHash)
+}
+
 func isDockerAvailable() bool {
-	cmd := exec.Command("docker", "version")
-	return cmd.Run() == nil
+	execCmd := exec.Command("docker", "version")
+	return execCmd.Run() == nil
 }
 
 func buildDevgoBinary(t *testing.T) string {
@@ -422,7 +430,7 @@ func TestOnCreateCommandIntegration(t *testing.T) {
 			devgoBinary := buildDevgoBinary(t)
 			defer os.Remove(devgoBinary)
 
-			containerName := "devgo-" + filepath.Base(tempDir) + "-default"
+			containerName := buildExpectedContainerName(tempDir)
 			cleanupContainer(t, containerName)
 			defer func() {
 				// Clean up container-created files before container cleanup
@@ -514,7 +522,7 @@ func TestOnCreateCommandFailure(t *testing.T) {
 	devgoBinary := buildDevgoBinary(t)
 	defer os.Remove(devgoBinary)
 
-	containerName := "devgo-" + filepath.Base(tempDir) + "-default"
+	containerName := buildExpectedContainerName(tempDir)
 	cleanupContainer(t, containerName)
 	defer func() {
 		cleanupContainerFiles(t, containerName, tempDir)
@@ -735,7 +743,7 @@ func TestUpdateRemoteUserUIDIntegration(t *testing.T) {
 			devgoBinary := buildDevgoBinary(t)
 			defer os.Remove(devgoBinary)
 
-			containerName := "devgo-" + filepath.Base(tempDir) + "-default"
+			containerName := buildExpectedContainerName(tempDir)
 			cleanupContainer(t, containerName)
 			defer cleanupContainer(t, containerName)
 

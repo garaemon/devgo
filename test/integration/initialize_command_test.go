@@ -95,7 +95,7 @@ func TestInitializeCommandIntegration(t *testing.T) {
 			defer os.Remove(devgoBinary)
 
 			// Pre-cleanup any existing containers
-			containerName := "devgo-" + filepath.Base(tempDir) + "-default"
+			containerName := buildExpectedContainerName(tempDir)
 			cleanupContainer(t, containerName)
 			defer cleanupContainer(t, containerName)
 
