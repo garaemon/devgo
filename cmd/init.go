@@ -95,7 +95,7 @@ func findGitRoot() (string, error) {
 
 func createDefaultTemplate() string {
 	return `{
-  "name": "Development Container",
+  "name": "development-container",
   "image": "ghcr.io/garaemon/ubuntu-noble:latest",
 
   // Container build configuration

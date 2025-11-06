@@ -20,7 +20,7 @@ func TestCreateDefaultTemplate(t *testing.T) {
 
 	// Verify it contains expected strings
 	expectedStrings := []string{
-		`"name": "Development Container"`,
+		`"name": "development-container"`,
 		`"image": "ghcr.io/garaemon/ubuntu-noble:latest"`,
 		`"features":`,
 		`"customizations":`,
@@ -296,7 +296,7 @@ func TestRunInitCommand(t *testing.T) {
 				if result["image"] != "ghcr.io/garaemon/ubuntu-noble:latest" {
 					t.Errorf("expected default image, got %v", result["image"])
 				}
-				if result["name"] != "Development Container" {
+				if result["name"] != "development-container" {
 					t.Errorf("expected default name, got %v", result["name"])
 				}
 			}
