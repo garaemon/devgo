@@ -82,7 +82,7 @@ func TestDetermineContainerNameWithPathHash(t *testing.T) {
 			workspaceDir:      "/Users/test/myproject",
 			devContainerName:  "",
 			expectContains:    []string{"myproject", "default"},
-			expectFormat:      "myproject-HASH-default",
+			expectFormat:      "myproject-default-HASH",
 		},
 		{
 			name:              "with custom devcontainer name",
@@ -91,7 +91,7 @@ func TestDetermineContainerNameWithPathHash(t *testing.T) {
 			workspaceDir:      "/Users/test/myproject",
 			devContainerName:  "CustomName",
 			expectContains:    []string{"CustomName", "default"},
-			expectFormat:      "CustomName-HASH-default",
+			expectFormat:      "CustomName-default-HASH",
 		},
 		{
 			name:              "with explicit container name",
@@ -109,7 +109,7 @@ func TestDetermineContainerNameWithPathHash(t *testing.T) {
 			workspaceDir:      "/Users/test/myproject",
 			devContainerName:  "",
 			expectContains:    []string{"myproject", "dev"},
-			expectFormat:      "myproject-HASH-dev",
+			expectFormat:      "myproject-dev-HASH",
 		},
 	}
 

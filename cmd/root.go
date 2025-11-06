@@ -268,5 +268,5 @@ func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDi
 		baseName = filepath.Base(workspaceDir)
 	}
 
-	return fmt.Sprintf("%s-%s-%s", baseName, pathHash, session)
+	return fmt.Sprintf("%s-%s-%s", baseName, session, pathHash)
 }
