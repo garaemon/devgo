@@ -388,12 +388,12 @@ func TestExecCommandContainerNameLogic(t *testing.T) {
 			devContainer: &devcontainer.DevContainer{
 				Name: "custom-dev-container",
 			},
-			expectedName: "devgo-" + GeneratePathHash(workspaceDir) + "-custom-dev-container-default",
+			expectedName: "custom-dev-container-" + GeneratePathHash(workspaceDir) + "-default",
 		},
 		{
 			name:         "uses workspace directory name",
 			devContainer: &devcontainer.DevContainer{},
-			expectedName: "devgo-" + GeneratePathHash(workspaceDir) + "-workspace-default",
+			expectedName: "workspace-" + GeneratePathHash(workspaceDir) + "-default",
 		},
 	}
 

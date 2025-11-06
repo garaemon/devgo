@@ -286,14 +286,14 @@ func TestDetermineContainerName(t *testing.T) {
 			containerNameFlag: "",
 			devContainerName:  "devcontainer-name",
 			workspaceDir:      "/path/to/workspace",
-			expectedResult:    "devgo-" + GeneratePathHash("/path/to/workspace") + "-devcontainer-name-default",
+			expectedResult:    "devcontainer-name-" + GeneratePathHash("/path/to/workspace") + "-default",
 		},
 		{
 			name:              "default name from workspace",
 			containerNameFlag: "",
 			devContainerName:  "",
 			workspaceDir:      "/path/to/workspace",
-			expectedResult:    "devgo-" + GeneratePathHash("/path/to/workspace") + "-workspace-default",
+			expectedResult:    "workspace-" + GeneratePathHash("/path/to/workspace") + "-default",
 		},
 	}
 

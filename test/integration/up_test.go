@@ -215,7 +215,7 @@ func TestUpCommandWithExistingContainer(t *testing.T) {
 func buildExpectedContainerName(workspaceDir string) string {
 	pathHash := cmd.GeneratePathHash(workspaceDir)
 	baseName := filepath.Base(workspaceDir)
-	return fmt.Sprintf("devgo-%s-%s-default", pathHash, baseName)
+	return fmt.Sprintf("%s-%s-default", baseName, pathHash)
 }
 
 func isDockerAvailable() bool {
