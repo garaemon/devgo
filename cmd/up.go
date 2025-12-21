@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -219,7 +220,12 @@ func executeOnCreateCommand(ctx context.Context, devContainer *devcontainer.DevC
 		}
 	}()
 
-	return executeCommandInContainer(ctx, cli, containerName, onCreateArgs, devContainer)
+	if err := executeCommandInContainer(ctx, cli, containerName, onCreateArgs, devContainer); err != nil {
+		return err
+	}
+
+	fmt.Println("Finished onCreateCommand")
+	return nil
 }
 
 func executeUpdateContentCommand(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
@@ -240,7 +246,12 @@ func executeUpdateContentCommand(ctx context.Context, devContainer *devcontainer
 		}
 	}()
 
-	return executeCommandInContainer(ctx, cli, containerName, updateContentArgs, devContainer)
+	if err := executeCommandInContainer(ctx, cli, containerName, updateContentArgs, devContainer); err != nil {
+		return err
+	}
+
+	fmt.Println("Finished updateContentCommand")
+	return nil
 }
 
 func executePostCreateCommand(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
@@ -261,7 +272,12 @@ func executePostCreateCommand(ctx context.Context, devContainer *devcontainer.De
 		}
 	}()
 
-	return executeCommandInContainer(ctx, cli, containerName, postCreateArgs, devContainer)
+	if err := executeCommandInContainer(ctx, cli, containerName, postCreateArgs, devContainer); err != nil {
+		return err
+	}
+
+	fmt.Println("Finished postCreateCommand")
+	return nil
 }
 
 func executePostStartCommand(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
@@ -282,7 +298,12 @@ func executePostStartCommand(ctx context.Context, devContainer *devcontainer.Dev
 		}
 	}()
 
-	return executeCommandInContainer(ctx, cli, containerName, postStartArgs, devContainer)
+	if err := executeCommandInContainer(ctx, cli, containerName, postStartArgs, devContainer); err != nil {
+		return err
+	}
+
+	fmt.Println("Finished postStartCommand")
+	return nil
 }
 
 func executePostAttachCommand(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
@@ -303,7 +324,12 @@ func executePostAttachCommand(ctx context.Context, devContainer *devcontainer.De
 		}
 	}()
 
-	return executeCommandInContainer(ctx, cli, containerName, postAttachArgs, devContainer)
+	if err := executeCommandInContainer(ctx, cli, containerName, postAttachArgs, devContainer); err != nil {
+		return err
+	}
+
+	fmt.Println("Finished postAttachCommand")
+	return nil
 }
 
 func executeInitializeCommand(devContainer *devcontainer.DevContainer, workspaceDir string) error {
@@ -322,6 +348,8 @@ func executeInitializeCommand(devContainer *devcontainer.DevContainer, workspace
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("initializeCommand failed: %w", err)
 	}
+
+	fmt.Println("Finished initializeCommand")
 
 	return nil
 }
@@ -586,7 +614,10 @@ func executeLifecycleCommands(ctx context.Context, devContainer *devcontainer.De
 	fmt.Printf("Container is ready for use (waitFor: %s completed)\n", waitFor)
 
 	// Execute remaining commands asynchronously
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for _, cmd := range commands {
 			if !devContainer.ShouldWaitForCommand(cmd.commandType) {
 				if err := cmd.executor(ctx, devContainer, containerName, workspaceDir); err != nil {
@@ -600,6 +631,8 @@ func executeLifecycleCommands(ctx context.Context, devContainer *devcontainer.De
 			fmt.Printf("Background postAttachCommand failed: %v\n", err)
 		}
 	}()
+
+	wg.Wait()
 
 	return nil
 }

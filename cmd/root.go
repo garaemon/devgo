@@ -223,7 +223,11 @@ func findDevcontainerConfig(configPath string) (string, error) {
 
 func determineWorkspaceFolder(devcontainerPath string) string {
 	if workspaceFolder != "" {
-		return workspaceFolder
+		absPath, err := filepath.Abs(workspaceFolder)
+		if err != nil {
+			return workspaceFolder
+		}
+		return absPath
 	}
 	// Convert to absolute path first to handle relative paths correctly
 	absPath, err := filepath.Abs(devcontainerPath)
