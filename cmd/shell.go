@@ -98,7 +98,7 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
-		Cmd:          []string{"/bin/bash", "-i", "-l"},
+		Cmd:          []string{"/bin/bash", "-i"},
 		WorkingDir:   workspaceFolder,
 		Env:          env,
 		ConsoleSize:  consoleSize,
