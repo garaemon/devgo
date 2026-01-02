@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/docker/docker/api/types/container"
@@ -53,6 +54,28 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		return fmt.Errorf("container '%s' is not running. Use 'devgo up' to start it first", containerName)
 	}
 
+	// Get base environment variables from running container
+	inspect, err := cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("failed to inspect container: %w", err)
+	}
+
+	baseEnv := make(map[string]string)
+	for _, e := range inspect.Config.Env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			baseEnv[parts[0]] = parts[1]
+		}
+	}
+
+	expandedEnv := devContainer.GetContainerEnv(baseEnv)
+	var env []string
+	// TERM should be set based on the current terminal, but xterm-256color is a safe default
+	env = append(env, "TERM=xterm-256color")
+	for k, v := range expandedEnv {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+
 	user := devContainer.GetContainerUser()
 	workspaceFolder := devContainer.GetWorkspaceFolder()
 
@@ -77,11 +100,9 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		AttachStderr: true,
 		Cmd:          []string{"/bin/bash", "-i", "-l"},
 		WorkingDir:   workspaceFolder,
-		Env: []string{
-			"TERM=xterm-256color",
-		},
-		ConsoleSize: consoleSize,
-		DetachKeys:  "ctrl-@", // Use ctrl-@ instead of default ctrl-p,ctrl-q to allow ctrl-p for history
+		Env:          env,
+		ConsoleSize:  consoleSize,
+		DetachKeys:   "ctrl-@", // Use ctrl-@ instead of default ctrl-p,ctrl-q to allow ctrl-p for history
 	}
 
 	if verbose {
