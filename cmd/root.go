@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/garaemon/devgo/pkg/constants"
 	"github.com/garaemon/devgo/pkg/devcontainer"
@@ -247,6 +248,10 @@ func GeneratePathHash(path string) string {
 	return hash[:8]
 }
 
+func sanitizeDockerName(name string) string {
+	return strings.ReplaceAll(name, " ", "_")
+}
+
 func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDir string) string {
 	if containerName != "" {
 		return containerName
@@ -259,7 +264,7 @@ func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDi
 
 	// For docker compose, use service name with project prefix
 	if devContainer.HasDockerCompose() && devContainer.GetService() != "" {
-		projectName := filepath.Base(workspaceDir)
+		projectName := sanitizeDockerName(filepath.Base(workspaceDir))
 		pathHash := GeneratePathHash(workspaceDir)
 		return fmt.Sprintf("%s-%s-%s-1", pathHash, projectName, devContainer.GetService())
 	}
@@ -267,9 +272,9 @@ func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDi
 	pathHash := GeneratePathHash(workspaceDir)
 	baseName := ""
 	if devContainer.Name != "" {
-		baseName = devContainer.Name
+		baseName = sanitizeDockerName(devContainer.Name)
 	} else {
-		baseName = filepath.Base(workspaceDir)
+		baseName = sanitizeDockerName(filepath.Base(workspaceDir))
 	}
 
 	return fmt.Sprintf("%s-%s-%s", baseName, session, pathHash)
