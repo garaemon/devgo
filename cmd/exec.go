@@ -19,7 +19,7 @@ import (
 // DockerExecClient interface for Docker exec operations
 type DockerExecClient interface {
 	ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
-	ContainerInspect(ctx context.Context, containerID string) (types.ContainerJSON, error)
+	ContainerInspect(ctx context.Context, containerID string) (types.ContainerJSON, error) //nolint:staticcheck // types.ContainerJSON is deprecated but upgrading requires major refactoring
 	ContainerExecCreate(ctx context.Context, containerID string, config container.ExecOptions) (container.ExecCreateResponse, error)
 	ContainerExecStart(ctx context.Context, execID string, config container.ExecStartOptions) error
 	ContainerExecAttach(ctx context.Context, execID string, config container.ExecAttachOptions) (types.HijackedResponse, error)

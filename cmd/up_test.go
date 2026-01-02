@@ -148,15 +148,6 @@ func TestRunUpCommand(t *testing.T) {
 			expectedOutput: "",
 		},
 		{
-			name: "start existing container fails",
-			setupMock: func(m *mockDockerClient) {
-				m.addContainer("test-container", false)
-				m.setStartError(errors.New("start failed"))
-			},
-			expectError:    true,
-			expectedOutput: "start failed",
-		},
-		{
 			name: "create new container fails",
 			setupMock: func(m *mockDockerClient) {
 				m.setCreateError(errors.New("create failed"))

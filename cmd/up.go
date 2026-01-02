@@ -186,8 +186,8 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 		// Use raw docker client to remove the container
 		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 		if err == nil {
-			cli.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
-			cli.Close()
+			_ = cli.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
+			_ = cli.Close()
 		}
 	}
 
@@ -566,9 +566,7 @@ func updateRemoteUserUID(ctx context.Context, devContainer *devcontainer.DevCont
 		return fmt.Errorf("failed to create Docker client: %w", err)
 	}
 	defer func() {
-		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
-		}
+		_ = cli.Close()
 	}()
 
 	// Commands to update UID/GID
@@ -719,9 +717,11 @@ func getImageEnv(ctx context.Context, imageName string) (map[string]string, erro
 	if err != nil {
 		return nil, err
 	}
-	defer cli.Close()
+	defer func() {
+		_ = cli.Close()
+	}()
 
-	inspect, _, err := cli.ImageInspectWithRaw(ctx, imageName)
+	inspect, _, err := cli.ImageInspectWithRaw(ctx, imageName) //nolint:staticcheck // ImageInspectWithRaw is deprecated
 	if err != nil {
 		return nil, err
 	}
@@ -793,7 +793,9 @@ func createComposeOverrideFile(service string, env map[string]string) (string, e
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	var content strings.Builder
 	content.WriteString("services:\n")
@@ -807,7 +809,7 @@ func createComposeOverrideFile(service string, env map[string]string) (string, e
 	}
 
 	if _, err := file.WriteString(content.String()); err != nil {
-		os.Remove(file.Name())
+		_ = os.Remove(file.Name())
 		return "", err
 	}
 
