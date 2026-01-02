@@ -144,7 +144,7 @@ func TestDetermineImageTag(t *testing.T) {
 			},
 			workspaceDir: "/workspace/myproject",
 			imageName:    "",
-			expected:     "devgo-My_App_Name:latest",
+			expected:     "devgo-my_app_name:latest",
 		},
 	}
 
