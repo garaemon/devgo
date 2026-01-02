@@ -653,19 +653,26 @@ func startContainerWithDockerCompose(ctx context.Context, devContainer *devconta
 		composeArgs = append(composeArgs, "-f", filepath.Join(workspaceDir, file))
 	}
 
+	// Create override file for containerEnv if needed
+	if len(devContainer.ContainerEnv) > 0 {
+		overrideFile, err := createComposeOverrideFile(devContainer.GetService(), devContainer.ContainerEnv)
+		if err != nil {
+			return fmt.Errorf("failed to create compose override file: %w", err)
+		}
+		if overrideFile != "" {
+			defer func() {
+				if err := os.Remove(overrideFile); err != nil {
+					fmt.Printf("Warning: failed to remove temporary override file: %v\n", err)
+				}
+			}()
+			composeArgs = append(composeArgs, "-f", overrideFile)
+		}
+	}
+
 	// Determine which services to run
 	runServices := devContainer.GetRunServices()
 	if len(runServices) == 0 {
 		runServices = []string{devContainer.GetService()}
-	}
-
-	// Check if services are already running
-	checkCmd := exec.Command("docker", append(append([]string{"compose"}, composeArgs...), "ps", "-q", devContainer.GetService())...)
-	checkCmd.Dir = workspaceDir
-	output, err := checkCmd.Output()
-	if err == nil && len(strings.TrimSpace(string(output))) > 0 {
-		fmt.Printf("Service '%s' is already running\n", devContainer.GetService())
-		return executeLifecycleCommands(ctx, devContainer, containerName, workspaceDir)
 	}
 
 	// Start docker compose services
@@ -682,4 +689,34 @@ func startContainerWithDockerCompose(ctx context.Context, devContainer *devconta
 
 	fmt.Printf("Docker compose services started successfully\n")
 	return executeLifecycleCommands(ctx, devContainer, containerName, workspaceDir)
+}
+
+func createComposeOverrideFile(service string, env map[string]string) (string, error) {
+	if len(env) == 0 {
+		return "", nil
+	}
+
+	file, err := os.CreateTemp("", "devgo-compose-override-*.yml")
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	var content strings.Builder
+	content.WriteString("services:\n")
+	content.WriteString(fmt.Sprintf("  %s:\n", service))
+	content.WriteString("    environment:\n")
+
+	for k, v := range env {
+		escapedVal := strings.ReplaceAll(v, "\\", "\\\\")
+		escapedVal = strings.ReplaceAll(escapedVal, "\"", "\\\"")
+		content.WriteString(fmt.Sprintf("      %s: \"%s\"\n", k, escapedVal))
+	}
+
+	if _, err := file.WriteString(content.String()); err != nil {
+		os.Remove(file.Name())
+		return "", err
+	}
+
+	return file.Name(), nil
 }
