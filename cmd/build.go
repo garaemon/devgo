@@ -128,10 +128,10 @@ func determineImageTag(devContainer *devcontainer.DevContainer, workspaceDir str
 	}
 
 	if devContainer.Name != "" {
-		return fmt.Sprintf("devgo-%s:latest", devContainer.Name)
+		return fmt.Sprintf("devgo-%s:latest", sanitizeDockerName(devContainer.Name))
 	}
 
-	return fmt.Sprintf("devgo-%s:latest", filepath.Base(workspaceDir))
+	return fmt.Sprintf("devgo-%s:latest", sanitizeDockerName(filepath.Base(workspaceDir)))
 }
 
 func pushImage(imageTag string) error {

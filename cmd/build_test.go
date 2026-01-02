@@ -137,6 +137,15 @@ func TestDetermineImageTag(t *testing.T) {
 			imageName:    "",
 			expected:     "devgo-myproject:latest",
 		},
+		{
+			name: "devcontainer name with spaces",
+			devContainer: &devcontainer.DevContainer{
+				Name: "My App Name",
+			},
+			workspaceDir: "/workspace/myproject",
+			imageName:    "",
+			expected:     "devgo-My_App_Name:latest",
+		},
 	}
 
 	for _, tt := range tests {

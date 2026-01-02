@@ -111,6 +111,15 @@ func TestDetermineContainerNameWithPathHash(t *testing.T) {
 			expectContains:    []string{"myproject", "dev"},
 			expectFormat:      "myproject-dev-HASH",
 		},
+		{
+			name:              "with spaces in devcontainer name",
+			containerNameFlag: "",
+			sessionNameFlag:   "",
+			workspaceDir:      "/Users/test/myproject",
+			devContainerName:  "My Project Name",
+			expectContains:    []string{"My_Project_Name", "default"},
+			expectFormat:      "My_Project_Name-default-HASH",
+		},
 	}
 
 	for _, tt := range tests {
