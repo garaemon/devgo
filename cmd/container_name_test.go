@@ -90,8 +90,8 @@ func TestDetermineContainerNameWithPathHash(t *testing.T) {
 			sessionNameFlag:   "",
 			workspaceDir:      "/Users/test/myproject",
 			devContainerName:  "CustomName",
-			expectContains:    []string{"CustomName", "default"},
-			expectFormat:      "CustomName-default-HASH",
+			expectContains:    []string{"customname", "default"},
+			expectFormat:      "customname-default-HASH",
 		},
 		{
 			name:              "with explicit container name",
@@ -117,8 +117,8 @@ func TestDetermineContainerNameWithPathHash(t *testing.T) {
 			sessionNameFlag:   "",
 			workspaceDir:      "/Users/test/myproject",
 			devContainerName:  "My Project Name",
-			expectContains:    []string{"My_Project_Name", "default"},
-			expectFormat:      "My_Project_Name-default-HASH",
+			expectContains:    []string{"my_project_name", "default"},
+			expectFormat:      "my_project_name-default-HASH",
 		},
 	}
 

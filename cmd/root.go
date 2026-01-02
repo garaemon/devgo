@@ -249,7 +249,17 @@ func GeneratePathHash(path string) string {
 }
 
 func sanitizeDockerName(name string) string {
-	return strings.ReplaceAll(name, " ", "_")
+	name = strings.ToLower(name)
+	var result strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			result.WriteRune(r)
+		} else {
+			// Replace spaces and all other invalid characters with underscore
+			result.WriteRune('_')
+		}
+	}
+	return result.String()
 }
 
 func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDir string) string {
