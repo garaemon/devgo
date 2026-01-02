@@ -1615,6 +1615,47 @@ func TestGetBuildCacheFrom(t *testing.T) {
 	}
 }
 
+func TestDevContainer_GetContainerEnv(t *testing.T) {
+	os.Setenv("LOCAL_VAR", "local_value")
+	defer os.Unsetenv("LOCAL_VAR")
+
+	dc := &DevContainer{
+		ContainerEnv: map[string]string{
+			"NEW_VAR":     "new_value",
+			"EXPANDED_C":  "base is ${containerEnv:BASE_VAR}",
+			"EXPANDED_L":  "local is ${localEnv:LOCAL_VAR}",
+			"MIXED":       "${containerEnv:BASE_VAR}:${localEnv:LOCAL_VAR}",
+			"PATH":        "${containerEnv:PATH}:/custom/bin",
+			"NON_EXIST":   "none: ${containerEnv:MISSING}",
+		},
+	}
+
+	baseEnv := map[string]string{
+		"BASE_VAR": "base_value",
+		"PATH":     "/usr/bin",
+	}
+
+	env := dc.GetContainerEnv(baseEnv)
+
+	tests := []struct {
+		key      string
+		expected string
+	}{
+		{"NEW_VAR", "new_value"},
+		{"EXPANDED_C", "base is base_value"},
+		{"EXPANDED_L", "local is local_value"},
+		{"MIXED", "base_value:local_value"},
+		{"PATH", "/usr/bin:/custom/bin"},
+		{"NON_EXIST", "none: "},
+	}
+
+	for _, tt := range tests {
+		if env[tt.key] != tt.expected {
+			t.Errorf("env[%q] = %q, want %q", tt.key, env[tt.key], tt.expected)
+		}
+	}
+}
+
 func TestHasBuild_WithLegacyDockerfile(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -3,6 +3,7 @@ package devcontainer
 import (
 	"fmt"
 	"os"
+	"regexp"
 
 	"github.com/titanous/json5"
 )
@@ -286,6 +287,52 @@ func (dc *DevContainer) GetService() string {
 
 func (dc *DevContainer) GetRunServices() []string {
 	return dc.RunServices
+}
+
+// GetContainerEnv returns the container environment variables with variable expansion.
+// baseEnv contains the environment variables already present in the container/image.
+func (dc *DevContainer) GetContainerEnv(baseEnv map[string]string) map[string]string {
+	if dc.ContainerEnv == nil {
+		return nil
+	}
+
+	result := make(map[string]string)
+	// Create a combined environment for expansion
+	// localEnv: prefix is handled by os.Getenv
+	// containerEnv: prefix is handled by baseEnv
+
+	for k, v := range dc.ContainerEnv {
+		result[k] = dc.expandValue(v, baseEnv)
+	}
+
+	return result
+}
+
+func (dc *DevContainer) expandValue(value string, baseEnv map[string]string) string {
+	// Support ${containerEnv:VAR} and ${localEnv:VAR}
+	// We use a simple regex-based replacement
+	re := regexp.MustCompile(`\${(containerEnv|localEnv):([^}]+)}`)
+
+	return re.ReplaceAllStringFunc(value, func(match string) string {
+		submatches := re.FindStringSubmatch(match)
+		if len(submatches) != 3 {
+			return match
+		}
+
+		envType := submatches[1]
+		envVar := submatches[2]
+
+		switch envType {
+		case "containerEnv":
+			if val, ok := baseEnv[envVar]; ok {
+				return val
+			}
+		case "localEnv":
+			return os.Getenv(envVar)
+		}
+
+		return ""
+	})
 }
 
 func parseCommand(cmd interface{}) []string {
