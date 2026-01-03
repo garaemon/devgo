@@ -250,8 +250,8 @@ func TestShellCommandExecOptions(t *testing.T) {
 		t.Errorf("expected AttachStderr to be true for shell command")
 	}
 
-	// Verify shell command uses /bin/bash -i -l for interactive login shell
-	expectedCmd := []string{"/bin/bash", "-i", "-l"}
+	// Verify shell command uses /bin/bash -i for interactive shell
+	expectedCmd := []string{"/bin/bash", "-i"}
 	if len(capturedExecOptions.Cmd) != len(expectedCmd) {
 		t.Errorf("expected Cmd to be %v, got %v", expectedCmd, capturedExecOptions.Cmd)
 	} else {
@@ -350,8 +350,8 @@ func TestShellRespectsBashrc(t *testing.T) {
 		}
 	}
 
-	// Verify /bin/bash -i -l is used for interactive login shell to source .bashrc
-	expectedCmd := []string{"/bin/bash", "-i", "-l"}
+	// Verify /bin/bash -i is used for interactive shell
+	expectedCmd := []string{"/bin/bash", "-i"}
 	if len(capturedExecOptions.Cmd) != len(expectedCmd) {
 		t.Errorf("expected Cmd to be %v for proper .bashrc sourcing, got %v", expectedCmd, capturedExecOptions.Cmd)
 	} else {
