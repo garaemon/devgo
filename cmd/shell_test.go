@@ -23,6 +23,7 @@ func TestExecuteInteractiveShell(t *testing.T) {
 		execCreateResp   container.ExecCreateResponse
 		execCreateError  error
 		execAttachError  error
+		inspectResponse  types.ContainerJSON
 		expectError      bool
 		expectedErrorMsg string
 	}{
@@ -40,6 +41,11 @@ func TestExecuteInteractiveShell(t *testing.T) {
 					Labels: map[string]string{
 						constants.DevgoManagedLabel: constants.DevgoManagedValue,
 					},
+				},
+			},
+			inspectResponse: types.ContainerJSON{
+				Config: &container.Config{
+					Env: []string{"PATH=/usr/bin"},
 				},
 			},
 			execCreateResp: container.ExecCreateResponse{
@@ -73,6 +79,11 @@ func TestExecuteInteractiveShell(t *testing.T) {
 					},
 				},
 			},
+			inspectResponse: types.ContainerJSON{
+				Config: &container.Config{
+					Env: []string{"PATH=/usr/bin"},
+				},
+			},
 			execCreateError:  fmt.Errorf("failed to create exec"),
 			expectError:      true,
 			expectedErrorMsg: "failed to create exec instance",
@@ -95,6 +106,11 @@ func TestExecuteInteractiveShell(t *testing.T) {
 			},
 			execCreateResp: container.ExecCreateResponse{
 				ID: "exec123",
+			},
+			inspectResponse: types.ContainerJSON{
+				Config: &container.Config{
+					Env: []string{"PATH=/usr/bin"},
+				},
 			},
 			execAttachError:  fmt.Errorf("failed to attach"),
 			expectError:      true,
@@ -124,6 +140,7 @@ func TestExecuteInteractiveShell(t *testing.T) {
 				execCreateError:    tt.execCreateError,
 				execAttachResponse: mockResp,
 				execAttachError:    tt.execAttachError,
+				inspectResponse:    tt.inspectResponse,
 			}
 
 			err := executeInteractiveShell(context.Background(), mockClient, tt.containerName, tt.devContainer)
@@ -198,6 +215,11 @@ func TestShellCommandExecOptions(t *testing.T) {
 			ID: "exec123",
 		},
 		execAttachResponse: createMockHijackedResponse(),
+		inspectResponse: types.ContainerJSON{
+			Config: &container.Config{
+				Env: []string{"PATH=/usr/bin"},
+			},
+		},
 	}
 
 	mockClient := &mockShellExecClient{
@@ -305,6 +327,11 @@ func TestShellRespectsBashrc(t *testing.T) {
 			ID: "exec123",
 		},
 		execAttachResponse: createMockHijackedResponse(),
+		inspectResponse: types.ContainerJSON{
+			Config: &container.Config{
+				Env: []string{"PATH=/usr/bin"},
+			},
+		},
 	}
 
 	mockClient := &mockShellExecClient{

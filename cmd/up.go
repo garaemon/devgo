@@ -181,9 +181,24 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 		if running {
 			return fmt.Errorf("container '%s' is already running", containerName)
 		}
-		fmt.Printf("Container '%s' exists but is stopped, starting it\n", containerName)
-		return dockerClient.StartExistingContainer(ctx, containerName)
+		fmt.Printf("Container '%s' exists but is stopped, removing and recreating it to apply configuration changes\n", containerName)
+		
+		// Use raw docker client to remove the container
+		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+		if err == nil {
+			_ = cli.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
+			_ = cli.Close()
+		}
 	}
+
+	// Get base environment variables from image for expansion
+	baseEnv, err := getImageEnv(ctx, devContainer.Image)
+	if err != nil {
+		fmt.Printf("Warning: failed to get base environment variables from image: %v\n", err)
+		baseEnv = make(map[string]string)
+	}
+
+	expandedEnv := devContainer.GetContainerEnv(baseEnv)
 
 	fmt.Printf("Creating and starting container '%s' with image '%s'\n", containerName, devContainer.Image)
 
@@ -192,7 +207,7 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 		Image:           devContainer.Image,
 		WorkspaceDir:    workspaceDir,
 		WorkspaceFolder: devContainer.GetWorkspaceFolder(),
-		Env:             devContainer.ContainerEnv,
+		Env:             expandedEnv,
 	}
 
 	if err := dockerClient.CreateAndStartContainer(ctx, dockerArgs); err != nil {
@@ -551,9 +566,7 @@ func updateRemoteUserUID(ctx context.Context, devContainer *devcontainer.DevCont
 		return fmt.Errorf("failed to create Docker client: %w", err)
 	}
 	defer func() {
-		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
-		}
+		_ = cli.Close()
 	}()
 
 	// Commands to update UID/GID
@@ -653,19 +666,34 @@ func startContainerWithDockerCompose(ctx context.Context, devContainer *devconta
 		composeArgs = append(composeArgs, "-f", filepath.Join(workspaceDir, file))
 	}
 
+	// Create override file for containerEnv if needed
+	if len(devContainer.ContainerEnv) > 0 {
+		// Get base environment variables for expansion
+		baseEnv, err := getComposeServiceEnv(workspaceDir, composeFiles, devContainer.GetService())
+		if err != nil {
+			fmt.Printf("Warning: failed to get base environment variables for compose service: %v\n", err)
+			baseEnv = make(map[string]string)
+		}
+
+		expandedEnv := devContainer.GetContainerEnv(baseEnv)
+		overrideFile, err := createComposeOverrideFile(devContainer.GetService(), expandedEnv)
+		if err != nil {
+			return fmt.Errorf("failed to create compose override file: %w", err)
+		}
+		if overrideFile != "" {
+			defer func() {
+				if err := os.Remove(overrideFile); err != nil {
+					fmt.Printf("Warning: failed to remove temporary override file: %v\n", err)
+				}
+			}()
+			composeArgs = append(composeArgs, "-f", overrideFile)
+		}
+	}
+
 	// Determine which services to run
 	runServices := devContainer.GetRunServices()
 	if len(runServices) == 0 {
 		runServices = []string{devContainer.GetService()}
-	}
-
-	// Check if services are already running
-	checkCmd := exec.Command("docker", append(append([]string{"compose"}, composeArgs...), "ps", "-q", devContainer.GetService())...)
-	checkCmd.Dir = workspaceDir
-	output, err := checkCmd.Output()
-	if err == nil && len(strings.TrimSpace(string(output))) > 0 {
-		fmt.Printf("Service '%s' is already running\n", devContainer.GetService())
-		return executeLifecycleCommands(ctx, devContainer, containerName, workspaceDir)
 	}
 
 	// Start docker compose services
@@ -682,4 +710,108 @@ func startContainerWithDockerCompose(ctx context.Context, devContainer *devconta
 
 	fmt.Printf("Docker compose services started successfully\n")
 	return executeLifecycleCommands(ctx, devContainer, containerName, workspaceDir)
+}
+
+func getImageEnv(ctx context.Context, imageName string) (map[string]string, error) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = cli.Close()
+	}()
+
+	inspect, _, err := cli.ImageInspectWithRaw(ctx, imageName) //nolint:staticcheck // ImageInspectWithRaw is deprecated
+	if err != nil {
+		return nil, err
+	}
+
+	env := make(map[string]string)
+	for _, e := range inspect.Config.Env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			env[parts[0]] = parts[1]
+		}
+	}
+	return env, nil
+}
+
+func getComposeServiceEnv(workspaceDir string, composeFiles []string, service string) (map[string]string, error) {
+	// Use docker compose config to get the environment
+	var args []string
+	for _, f := range composeFiles {
+		args = append(args, "-f", f)
+	}
+	args = append(args, "config", "--format", "json")
+
+	cmd := exec.Command("docker", append([]string{"compose"}, args...)...)
+	cmd.Dir = workspaceDir
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	// Note: We could parse the JSON here to be more robust, but docker compose config
+	// mainly shows what's in the YAML. To get the actual environment including
+	// image defaults, we'd need to inspect the image.
+	// For now, let's try to get the image name from the config and inspect it.
+
+	// Simple heuristic to find image name for the service in the config output
+	// A proper JSON parser would be better but let's keep it simple for now
+	outputStr := string(output)
+	imageMarker := fmt.Sprintf("\"%s\":", service)
+	idx := strings.Index(outputStr, imageMarker)
+	if idx == -1 {
+		return nil, fmt.Errorf("service %s not found in compose config", service)
+	}
+
+	imageIdx := strings.Index(outputStr[idx:], "\"image\":")
+	if imageIdx == -1 {
+		return nil, fmt.Errorf("image not found for service %s", service)
+	}
+
+	start := idx + imageIdx + len("\"image\":")
+	quoteStart := strings.Index(outputStr[start:], "\"")
+	if quoteStart == -1 {
+		return nil, fmt.Errorf("failed to parse image name")
+	}
+	quoteEnd := strings.Index(outputStr[start+quoteStart+1:], "\"")
+	if quoteEnd == -1 {
+		return nil, fmt.Errorf("failed to parse image name")
+	}
+
+	imageName := outputStr[start+quoteStart+1 : start+quoteStart+1+quoteEnd]
+	return getImageEnv(context.Background(), imageName)
+}
+
+func createComposeOverrideFile(service string, env map[string]string) (string, error) {
+	if len(env) == 0 {
+		return "", nil
+	}
+
+	file, err := os.CreateTemp("", "devgo-compose-override-*.yml")
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	var content strings.Builder
+	content.WriteString("services:\n")
+	content.WriteString(fmt.Sprintf("  %s:\n", service))
+	content.WriteString("    environment:\n")
+
+	for k, v := range env {
+		escapedVal := strings.ReplaceAll(v, "\\", "\\\\")
+		escapedVal = strings.ReplaceAll(escapedVal, "\"", "\\\"")
+		content.WriteString(fmt.Sprintf("      %s: \"%s\"\n", k, escapedVal))
+	}
+
+	if _, err := file.WriteString(content.String()); err != nil {
+		_ = os.Remove(file.Name())
+		return "", err
+	}
+
+	return file.Name(), nil
 }

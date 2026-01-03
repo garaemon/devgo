@@ -19,6 +19,7 @@ import (
 // DockerExecClient interface for Docker exec operations
 type DockerExecClient interface {
 	ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
+	ContainerInspect(ctx context.Context, containerID string) (types.ContainerJSON, error) //nolint:staticcheck // types.ContainerJSON is deprecated but upgrading requires major refactoring
 	ContainerExecCreate(ctx context.Context, containerID string, config container.ExecOptions) (container.ExecCreateResponse, error)
 	ContainerExecStart(ctx context.Context, execID string, config container.ExecStartOptions) error
 	ContainerExecAttach(ctx context.Context, execID string, config container.ExecAttachOptions) (types.HijackedResponse, error)
@@ -68,6 +69,26 @@ func executeCommandInContainer(ctx context.Context, cli DockerExecClient, contai
 		return fmt.Errorf("container '%s' is not running. Use 'devgo up' to start it first", containerName)
 	}
 
+	// Get base environment variables from running container
+	inspect, err := cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("failed to inspect container: %w", err)
+	}
+
+	baseEnv := make(map[string]string)
+	for _, e := range inspect.Config.Env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			baseEnv[parts[0]] = parts[1]
+		}
+	}
+
+	expandedEnv := devContainer.GetContainerEnv(baseEnv)
+	var env []string
+	for k, v := range expandedEnv {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+
 	user := devContainer.GetContainerUser()
 	workspaceFolder := devContainer.GetWorkspaceFolder()
 
@@ -79,6 +100,7 @@ func executeCommandInContainer(ctx context.Context, cli DockerExecClient, contai
 		AttachStderr: true,
 		Cmd:          args,
 		WorkingDir:   workspaceFolder,
+		Env:          env,
 	}
 
 	execCreateResp, err := cli.ContainerExecCreate(ctx, containerID, execConfig)

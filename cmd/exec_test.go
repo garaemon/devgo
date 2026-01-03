@@ -48,6 +48,8 @@ type mockExecClient struct {
 	execCreateError    error
 	execAttachResponse types.HijackedResponse
 	execAttachError    error
+	inspectResponse    types.ContainerJSON
+	inspectError       error
 }
 
 func (m *mockExecClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
@@ -55,6 +57,13 @@ func (m *mockExecClient) ContainerList(ctx context.Context, options container.Li
 		return nil, m.listError
 	}
 	return m.containers, nil
+}
+
+func (m *mockExecClient) ContainerInspect(ctx context.Context, containerID string) (types.ContainerJSON, error) {
+	if m.inspectError != nil {
+		return types.ContainerJSON{}, m.inspectError
+	}
+	return m.inspectResponse, nil
 }
 
 func (m *mockExecClient) ContainerExecCreate(ctx context.Context, containerID string, config container.ExecOptions) (container.ExecCreateResponse, error) {
@@ -189,6 +198,7 @@ func TestExecuteCommandInContainer(t *testing.T) {
 		execCreateResp   container.ExecCreateResponse
 		execCreateError  error
 		execAttachError  error
+		inspectResponse  types.ContainerJSON
 		expectError      bool
 		expectedErrorMsg string
 	}{
@@ -207,6 +217,11 @@ func TestExecuteCommandInContainer(t *testing.T) {
 					Labels: map[string]string{
 						constants.DevgoManagedLabel: constants.DevgoManagedValue,
 					},
+				},
+			},
+			inspectResponse: types.ContainerJSON{
+				Config: &container.Config{
+					Env: []string{"PATH=/usr/bin"},
 				},
 			},
 			execCreateResp: container.ExecCreateResponse{
@@ -242,6 +257,11 @@ func TestExecuteCommandInContainer(t *testing.T) {
 					},
 				},
 			},
+			inspectResponse: types.ContainerJSON{
+				Config: &container.Config{
+					Env: []string{"PATH=/usr/bin"},
+				},
+			},
 			execCreateError:  fmt.Errorf("failed to create exec"),
 			expectError:      true,
 			expectedErrorMsg: "failed to create exec instance",
@@ -265,6 +285,11 @@ func TestExecuteCommandInContainer(t *testing.T) {
 			},
 			execCreateResp: container.ExecCreateResponse{
 				ID: "exec123",
+			},
+			inspectResponse: types.ContainerJSON{
+				Config: &container.Config{
+					Env: []string{"PATH=/usr/bin"},
+				},
 			},
 			execAttachError:  fmt.Errorf("failed to attach"),
 			expectError:      true,
@@ -304,6 +329,7 @@ func TestExecuteCommandInContainer(t *testing.T) {
 				execCreateError:    tt.execCreateError,
 				execAttachResponse: mockResp,
 				execAttachError:    tt.execAttachError,
+				inspectResponse:    tt.inspectResponse,
 			}
 
 			err := executeCommandInContainer(context.Background(), mockClient, tt.containerName, tt.args, tt.devContainer)
