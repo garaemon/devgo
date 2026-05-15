@@ -89,7 +89,7 @@ func executeCommandInContainer(ctx context.Context, cli DockerExecClient, contai
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	user := devContainer.GetContainerUser()
+	user := devContainer.GetTargetUser()
 	workspaceFolder := devContainer.GetWorkspaceFolder()
 
 	execConfig := container.ExecOptions{

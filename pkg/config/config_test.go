@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -95,5 +96,112 @@ func TestGetEnv_WithEmptyValue(t *testing.T) {
 
 	if result != defaultValue {
 		t.Errorf("getEnv() = %v, want %v", result, defaultValue)
+	}
+}
+
+func TestLoadUserConfigFile_Missing(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.json")
+
+	cfg, err := LoadUserConfigFile(path)
+	if err != nil {
+		t.Fatalf("LoadUserConfigFile() unexpected error: %v", err)
+	}
+	if cfg == nil {
+		t.Fatalf("LoadUserConfigFile() returned nil, want empty UserConfig")
+	}
+	if cfg.Dotfiles != nil {
+		t.Errorf("expected Dotfiles to be nil for missing file, got %+v", cfg.Dotfiles)
+	}
+}
+
+func TestLoadUserConfigFile_ShellField(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.json")
+	if err := os.WriteFile(path, []byte(`{"shell": "zsh"}`), 0o600); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	cfg, err := LoadUserConfigFile(path)
+	if err != nil {
+		t.Fatalf("LoadUserConfigFile() error = %v", err)
+	}
+	if cfg.Shell != "zsh" {
+		t.Errorf("Shell = %q, want %q", cfg.Shell, "zsh")
+	}
+}
+
+func TestLoadUserConfigFile_FullDotfiles(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.json")
+	contents := `{
+  "dotfiles": {
+    "repository": "https://github.com/example/dotfiles",
+    "targetPath": "/home/user/dotfiles",
+    "installCommand": "bootstrap.sh"
+  }
+}`
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	cfg, err := LoadUserConfigFile(path)
+	if err != nil {
+		t.Fatalf("LoadUserConfigFile() error = %v", err)
+	}
+	if cfg.Dotfiles == nil {
+		t.Fatalf("Dotfiles is nil, want populated")
+	}
+	if cfg.Dotfiles.Repository != "https://github.com/example/dotfiles" {
+		t.Errorf("Repository = %q, want %q", cfg.Dotfiles.Repository, "https://github.com/example/dotfiles")
+	}
+	if cfg.Dotfiles.TargetPath != "/home/user/dotfiles" {
+		t.Errorf("TargetPath = %q, want %q", cfg.Dotfiles.TargetPath, "/home/user/dotfiles")
+	}
+	if cfg.Dotfiles.InstallCommand != "bootstrap.sh" {
+		t.Errorf("InstallCommand = %q, want %q", cfg.Dotfiles.InstallCommand, "bootstrap.sh")
+	}
+}
+
+func TestLoadUserConfigFile_MalformedJSON(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.json")
+	if err := os.WriteFile(path, []byte("{ this is not json"), 0o600); err != nil {
+		t.Fatalf("failed to write fixture: %v", err)
+	}
+
+	if _, err := LoadUserConfigFile(path); err == nil {
+		t.Fatalf("expected error for malformed JSON, got nil")
+	}
+}
+
+func TestUserConfigPath_FromXDGEnv(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	got, err := UserConfigPath()
+	if err != nil {
+		t.Fatalf("UserConfigPath() error = %v", err)
+	}
+	want := filepath.Join(tmp, "devgo", "config.json")
+	if got != want {
+		t.Errorf("UserConfigPath() = %q, want %q", got, want)
+	}
+}
+
+func TestUserConfigPath_DefaultsToHome(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", "")
+	// Pin HOME so the test does not depend on the runner's environment.
+	t.Setenv("HOME", tmp)
+
+	got, err := UserConfigPath()
+	if err != nil {
+		t.Fatalf("UserConfigPath() error = %v", err)
+	}
+
+	want := filepath.Join(tmp, ".config", "devgo", "config.json")
+	if got != want {
+		t.Errorf("UserConfigPath() = %q, want %q", got, want)
 	}
 }

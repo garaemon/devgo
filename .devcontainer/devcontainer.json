@@ -1,0 +1,17 @@
+{
+  // Project dev container for working on devgo itself.
+  // golangci-lint follows @latest to match .github/workflows; pin both
+  // together if reproducibility across contributors becomes a concern.
+  "name": "devgo",
+  "image": "mcr.microsoft.com/devcontainers/go:1.24",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "postCreateCommand": "go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest && go mod download",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go"
+      ]
+    }
+  }
+}

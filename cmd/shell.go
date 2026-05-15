@@ -11,9 +11,27 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/garaemon/devgo/pkg/config"
 	"github.com/garaemon/devgo/pkg/devcontainer"
 	"golang.org/x/term"
 )
+
+// DefaultShell is used when neither --shell nor user config provides a value.
+const DefaultShell = "/bin/bash"
+
+// resolveShellCommand returns the command to run for `devgo shell`. The
+// resolution order is: --shell flag > user config > DefaultShell. The shell
+// is always launched with -i for interactive mode.
+func resolveShellCommand(override string, userConfig *config.UserConfig) []string {
+	shell := DefaultShell
+	if userConfig != nil && userConfig.Shell != "" {
+		shell = userConfig.Shell
+	}
+	if override != "" {
+		shell = override
+	}
+	return []string{shell, "-i"}
+}
 
 func runShellCommand(args []string) error {
 	devcontainerPath, err := findDevcontainerConfig(configPath)
@@ -40,11 +58,18 @@ func runShellCommand(args []string) error {
 		}
 	}()
 
+	userConfig, err := config.LoadUserConfig()
+	if err != nil {
+		warnf("failed to load user config: %v", err)
+		userConfig = &config.UserConfig{}
+	}
+	shellCommand := resolveShellCommand(shellOverride, userConfig)
+
 	ctx := context.Background()
-	return executeInteractiveShell(ctx, cli, containerName, devContainer)
+	return executeInteractiveShell(ctx, cli, containerName, devContainer, shellCommand)
 }
 
-func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containerName string, devContainer *devcontainer.DevContainer) error {
+func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containerName string, devContainer *devcontainer.DevContainer, shellCommand []string) error {
 	containerID, err := findRunningContainer(ctx, cli, containerName)
 	if err != nil {
 		return fmt.Errorf("failed to find running container: %w", err)
@@ -76,7 +101,7 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	user := devContainer.GetContainerUser()
+	user := devContainer.GetTargetUser()
 	workspaceFolder := devContainer.GetWorkspaceFolder()
 
 	// Get terminal size before creating exec
@@ -98,7 +123,7 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
-		Cmd:          []string{"/bin/bash", "-i"},
+		Cmd:          shellCommand,
 		WorkingDir:   workspaceFolder,
 		Env:          env,
 		ConsoleSize:  consoleSize,

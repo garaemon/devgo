@@ -16,8 +16,10 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/garaemon/devgo/pkg/config"
 	"github.com/garaemon/devgo/pkg/constants"
 	"github.com/garaemon/devgo/pkg/devcontainer"
+	"github.com/garaemon/devgo/pkg/dotfiles"
 	"github.com/garaemon/devgo/pkg/sshagent"
 	"github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -647,7 +649,60 @@ func executeLifecycleCommands(ctx context.Context, devContainer *devcontainer.De
 
 	wg.Wait()
 
+	// Personal dotfiles run after every team-defined lifecycle command so
+	// that team setup always completes first. Failures are logged but do
+	// not fail the up command.
+	if err := applyDotfiles(ctx, devContainer, containerName); err != nil {
+		warnf("dotfiles step failed for container %s: %v", containerName, err)
+	}
+
 	return nil
+}
+
+// applyDotfiles loads the user's persistent dotfiles config, merges CLI
+// overrides, and runs the clone/install workflow inside the container. It
+// returns nil when dotfiles are disabled or unconfigured. All other errors
+// (config load, missing container, clone, install) are returned to the
+// caller, which logs them but continues so a broken personal setup never
+// blocks the container from being usable.
+func applyDotfiles(ctx context.Context, devContainer *devcontainer.DevContainer, containerName string) error {
+	userConfig, err := config.LoadUserConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load user config: %w", err)
+	}
+
+	override := dotfiles.Override{
+		Repository:     dotfilesRepository,
+		TargetPath:     dotfilesTargetPath,
+		InstallCommand: dotfilesInstallCommand,
+	}
+	cfg := dotfiles.Resolve(userConfig.Dotfiles, override, noDotfiles)
+	if cfg == nil {
+		return nil
+	}
+
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client for dotfiles: %w", err)
+	}
+	defer func() {
+		if closeErr := cli.Close(); closeErr != nil {
+			warnf("failed to close Docker client: %v", closeErr)
+		}
+	}()
+
+	containerID, err := findRunningContainer(ctx, cli, containerName)
+	if err != nil {
+		return fmt.Errorf("failed to find running container for dotfiles: %w", err)
+	}
+	if containerID == "" {
+		return fmt.Errorf("container %s is not running, cannot apply dotfiles", containerName)
+	}
+
+	executor := newDotfilesExecutor(cli, containerID)
+	user := devContainer.GetTargetUser()
+	fmt.Printf("Checking dotfiles for container %s as user %s\n", containerName, user)
+	return dotfiles.Apply(ctx, executor, user, cfg, forceDotfiles)
 }
 
 func startContainerWithDockerCompose(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
@@ -799,13 +854,13 @@ func createComposeOverrideFile(service string, env map[string]string) (string, e
 
 	var content strings.Builder
 	content.WriteString("services:\n")
-	content.WriteString(fmt.Sprintf("  %s:\n", service))
+	fmt.Fprintf(&content, "  %s:\n", service)
 	content.WriteString("    environment:\n")
 
 	for k, v := range env {
 		escapedVal := strings.ReplaceAll(v, "\\", "\\\\")
 		escapedVal = strings.ReplaceAll(escapedVal, "\"", "\\\"")
-		content.WriteString(fmt.Sprintf("      %s: \"%s\"\n", k, escapedVal))
+		fmt.Fprintf(&content, "      %s: \"%s\"\n", k, escapedVal)
 	}
 
 	if _, err := file.WriteString(content.String()); err != nil {

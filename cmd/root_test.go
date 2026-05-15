@@ -247,6 +247,104 @@ func TestParseAllFlags_FlagValues(t *testing.T) {
 	}
 }
 
+// resetPersonalizationFlags clears the package-level globals introduced by
+// this PR (dotfiles + shell override). Older flag tests in this file reset
+// only the older globals; this helper covers the per-user / personal flags
+// added together.
+func resetPersonalizationFlags() {
+	dotfilesRepository = ""
+	dotfilesTargetPath = ""
+	dotfilesInstallCommand = ""
+	noDotfiles = false
+	forceDotfiles = false
+	shellOverride = ""
+}
+
+func TestParseAllFlags_ShellFlag(t *testing.T) {
+	resetPersonalizationFlags()
+	if _, err := parseAllFlags([]string{"--shell", "/usr/bin/zsh"}); err != nil {
+		t.Fatalf("parseAllFlags error = %v", err)
+	}
+	if shellOverride != "/usr/bin/zsh" {
+		t.Errorf("shellOverride = %q, want %q", shellOverride, "/usr/bin/zsh")
+	}
+}
+
+func TestParseAllFlags_DotfilesFlags(t *testing.T) {
+	tests := []struct {
+		name           string
+		args           []string
+		wantRepository string
+		wantTargetPath string
+		wantInstallCmd string
+		wantNoDotfile  bool
+		wantForce      bool
+	}{
+		{
+			name:           "dotfiles-repository",
+			args:           []string{"--dotfiles-repository", "https://example.com/df"},
+			wantRepository: "https://example.com/df",
+		},
+		{
+			name:           "dotfiles-target-path",
+			args:           []string{"--dotfiles-target-path", "/home/u/df"},
+			wantTargetPath: "/home/u/df",
+		},
+		{
+			name:           "dotfiles-install-command",
+			args:           []string{"--dotfiles-install-command", "bootstrap.sh"},
+			wantInstallCmd: "bootstrap.sh",
+		},
+		{
+			name:          "no-dotfiles",
+			args:          []string{"--no-dotfiles"},
+			wantNoDotfile: true,
+		},
+		{
+			name:      "force-dotfiles",
+			args:      []string{"--force-dotfiles"},
+			wantForce: true,
+		},
+		{
+			name: "all dotfiles flags together",
+			args: []string{
+				"--dotfiles-repository", "https://example.com/df",
+				"--dotfiles-target-path", "/df",
+				"--dotfiles-install-command", "setup.sh",
+				"--force-dotfiles",
+			},
+			wantRepository: "https://example.com/df",
+			wantTargetPath: "/df",
+			wantInstallCmd: "setup.sh",
+			wantForce:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetPersonalizationFlags()
+			if _, err := parseAllFlags(tt.args); err != nil {
+				t.Fatalf("parseAllFlags error = %v", err)
+			}
+			if dotfilesRepository != tt.wantRepository {
+				t.Errorf("dotfilesRepository = %q, want %q", dotfilesRepository, tt.wantRepository)
+			}
+			if dotfilesTargetPath != tt.wantTargetPath {
+				t.Errorf("dotfilesTargetPath = %q, want %q", dotfilesTargetPath, tt.wantTargetPath)
+			}
+			if dotfilesInstallCommand != tt.wantInstallCmd {
+				t.Errorf("dotfilesInstallCommand = %q, want %q", dotfilesInstallCommand, tt.wantInstallCmd)
+			}
+			if noDotfiles != tt.wantNoDotfile {
+				t.Errorf("noDotfiles = %v, want %v", noDotfiles, tt.wantNoDotfile)
+			}
+			if forceDotfiles != tt.wantForce {
+				t.Errorf("forceDotfiles = %v, want %v", forceDotfiles, tt.wantForce)
+			}
+		})
+	}
+}
+
 func TestExecute_UnknownOption(t *testing.T) {
 	// Save original os.Args and restore after test
 	oldArgs := os.Args

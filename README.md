@@ -23,6 +23,7 @@ A Go CLI tool that runs Docker containers based on devcontainer.json configurati
 - **waitFor Support** - Control execution order and dependencies
 - **Container Management** - Proper labeling and workspace isolation
 - **Interactive TTY** - Full terminal support for shell sessions
+- **Personal customization** - Per-user dotfiles repository and shell override that stay out of the team's `devcontainer.json` (see [docs/dotfiles.md](docs/dotfiles.md))
 
 ### ❌ Not Yet Implemented
 
@@ -155,7 +156,12 @@ Creates and starts a dev container based on the devcontainer.json configuration.
 devgo up [options]
 
 Options:
-  --workspace-folder PATH    Specify workspace directory (default: current directory)
+  --workspace-folder PATH                    Specify workspace directory (default: current directory)
+  --dotfiles-repository URL                  Override the personal dotfiles repository for this run
+  --dotfiles-target-path PATH                Override the in-container clone target (default "~/dotfiles")
+  --dotfiles-install-command SCRIPT          Override the install script to run after clone
+  --no-dotfiles                              Skip the dotfiles step entirely
+  --force-dotfiles                           Re-clone dotfiles even if the target path already exists
 ```
 
 **Features:**
@@ -164,6 +170,7 @@ Options:
 - Executes lifecycle commands in proper order
 - Handles container reuse if already running
 - Mounts workspace and sets up environment variables
+- Applies the user's personal dotfiles repository (configured in `~/.config/devgo/config.json`) after team lifecycle commands complete; see [docs/dotfiles.md](docs/dotfiles.md) for details
 
 ### `devgo build`
 
@@ -209,11 +216,14 @@ devgo shell [options]
 
 Options:
   --workspace-folder PATH    Specify workspace directory
+  --shell PROGRAM            Program to launch (default /bin/bash). Overrides the
+                             "shell" setting in ~/.config/devgo/config.json.
 ```
 
 **Features:**
 - Full TTY support with proper terminal handling
-- Runs as the configured container user
+- Runs as the dev container's `remoteUser` (falls back to `containerUser`, then `root`), so the user matches the lifecycle commands and personal dotfiles
+- Default shell is `/bin/bash`; configure a personal default in `~/.config/devgo/config.json` (`"shell": "zsh"`) or override per invocation with `--shell`
 - Sets appropriate working directory
 - Handles signal forwarding (Ctrl+C, etc.)
 - Custom detach keys to preserve readline functionality
