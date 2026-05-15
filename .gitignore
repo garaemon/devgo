@@ -1,1 +1,7 @@
 devgo
+
+# Test coverage artifacts produced by `make test-coverage`
+# (matches coverage.out, coverage.html, and ad-hoc variants like
+# coverage_final.out, coverage_updatecontent.html, etc.)
+coverage*.out
+coverage*.html
