@@ -10,6 +10,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/garaemon/devgo/pkg/config"
 	"github.com/garaemon/devgo/pkg/constants"
 	"github.com/garaemon/devgo/pkg/devcontainer"
 )
@@ -143,7 +144,7 @@ func TestExecuteInteractiveShell(t *testing.T) {
 				inspectResponse:    tt.inspectResponse,
 			}
 
-			err := executeInteractiveShell(context.Background(), mockClient, tt.containerName, tt.devContainer)
+			err := executeInteractiveShell(context.Background(), mockClient, tt.containerName, tt.devContainer, []string{"/bin/bash", "-i"})
 
 			if tt.expectError {
 				if err == nil {
@@ -160,6 +161,156 @@ func TestExecuteInteractiveShell(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestResolveShellCommand(t *testing.T) {
+	tests := []struct {
+		name     string
+		override string
+		userConfig  *config.UserConfig
+		want     []string
+	}{
+		{
+			name:     "default when nothing set",
+			override: "",
+			userConfig:  nil,
+			want:     []string{"/bin/bash", "-i"},
+		},
+		{
+			name:     "user config wins over default",
+			override: "",
+			userConfig:  &config.UserConfig{Shell: "zsh"},
+			want:     []string{"zsh", "-i"},
+		},
+		{
+			name:     "CLI override wins over user config",
+			override: "/usr/bin/fish",
+			userConfig:  &config.UserConfig{Shell: "zsh"},
+			want:     []string{"/usr/bin/fish", "-i"},
+		},
+		{
+			name:     "CLI override with nil user config",
+			override: "zsh",
+			userConfig:  nil,
+			want:     []string{"zsh", "-i"},
+		},
+		{
+			name:     "empty user config Shell falls back to default",
+			override: "",
+			userConfig:  &config.UserConfig{Shell: ""},
+			want:     []string{"/bin/bash", "-i"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveShellCommand(tt.override, tt.userConfig)
+			if len(got) != len(tt.want) {
+				t.Fatalf("resolveShellCommand() = %v, want %v", got, tt.want)
+			}
+			for i, v := range tt.want {
+				if got[i] != v {
+					t.Errorf("resolveShellCommand()[%d] = %q, want %q", i, got[i], v)
+				}
+			}
+		})
+	}
+}
+
+func TestShellCommand_FallsBackToContainerUser(t *testing.T) {
+	devContainer := &devcontainer.DevContainer{
+		ContainerUser:   "node",
+		WorkspaceFolder: "/workspace",
+	}
+	containers := []container.Summary{
+		{
+			ID:    "test123",
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				constants.DevgoManagedLabel: constants.DevgoManagedValue,
+			},
+		},
+	}
+	baseMockClient := &mockExecClient{
+		containers:         containers,
+		execCreateResponse: container.ExecCreateResponse{ID: "exec123"},
+		execAttachResponse: createMockHijackedResponse(),
+		inspectResponse: types.ContainerJSON{
+			Config: &container.Config{Env: []string{"PATH=/usr/bin"}},
+		},
+	}
+	mockClient := &mockShellExecClient{mockExecClient: baseMockClient}
+
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
+
+	if mockClient.capturedExecOptions.User != "node" {
+		t.Errorf("expected shell to fall back to containerUser %q, got %q", "node", mockClient.capturedExecOptions.User)
+	}
+}
+
+func TestShellCommand_PrefersRemoteUser(t *testing.T) {
+	devContainer := &devcontainer.DevContainer{
+		ContainerUser:   "root",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspace",
+	}
+	containers := []container.Summary{
+		{
+			ID:    "test123",
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				constants.DevgoManagedLabel: constants.DevgoManagedValue,
+			},
+		},
+	}
+	baseMockClient := &mockExecClient{
+		containers:         containers,
+		execCreateResponse: container.ExecCreateResponse{ID: "exec123"},
+		execAttachResponse: createMockHijackedResponse(),
+		inspectResponse: types.ContainerJSON{
+			Config: &container.Config{Env: []string{"PATH=/usr/bin"}},
+		},
+	}
+	mockClient := &mockShellExecClient{mockExecClient: baseMockClient}
+
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
+
+	if mockClient.capturedExecOptions.User != "vscode" {
+		t.Errorf("expected shell to run as remoteUser %q, got %q", "vscode", mockClient.capturedExecOptions.User)
+	}
+}
+
+func TestShellCommand_UsesResolvedShell(t *testing.T) {
+	devContainer := &devcontainer.DevContainer{
+		ContainerUser:   "testuser",
+		WorkspaceFolder: "/workspace",
+	}
+	containers := []container.Summary{
+		{
+			ID:    "test123",
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				constants.DevgoManagedLabel: constants.DevgoManagedValue,
+			},
+		},
+	}
+	baseMockClient := &mockExecClient{
+		containers:         containers,
+		execCreateResponse: container.ExecCreateResponse{ID: "exec123"},
+		execAttachResponse: createMockHijackedResponse(),
+		inspectResponse: types.ContainerJSON{
+			Config: &container.Config{Env: []string{"PATH=/usr/bin"}},
+		},
+	}
+	mockClient := &mockShellExecClient{mockExecClient: baseMockClient}
+
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"zsh", "-i"})
+
+	got := mockClient.capturedExecOptions.Cmd
+	want := []string{"zsh", "-i"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("Cmd = %v, want %v", got, want)
 	}
 }
 
@@ -227,7 +378,7 @@ func TestShellCommandExecOptions(t *testing.T) {
 	}
 
 	// This will fail due to terminal handling, but we can still test the exec options
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer)
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
 
 	// Verify exec options are set correctly for shell command
 	capturedExecOptions := mockClient.capturedExecOptions
@@ -338,7 +489,7 @@ func TestShellRespectsBashrc(t *testing.T) {
 		mockExecClient: baseMockClient,
 	}
 
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer)
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
 
 	capturedExecOptions := mockClient.capturedExecOptions
 

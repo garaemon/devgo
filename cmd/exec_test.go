@@ -40,6 +40,28 @@ func createMockHijackedResponse() types.HijackedResponse {
 	}
 }
 
+// createMockHijackedResponseValid returns a HijackedResponse whose Reader
+// contains a single valid Docker stdcopy frame, so stdcopy.StdCopy returns
+// without error. Tests that exercise the success path of executeCommand-
+// InContainer (and need to assert err == nil) should use this helper.
+func createMockHijackedResponseValid() types.HijackedResponse {
+	buf := &bytes.Buffer{}
+	// Docker stream frame: [stream(1=stdout)][0][0][0][size big-endian 4 bytes][payload]
+	buf.WriteByte(1)
+	buf.WriteByte(0)
+	buf.WriteByte(0)
+	buf.WriteByte(0)
+	buf.WriteByte(0)
+	buf.WriteByte(0)
+	buf.WriteByte(0)
+	buf.WriteByte(2)
+	buf.WriteString("ok")
+	return types.HijackedResponse{
+		Conn:   &mockConn{Buffer: &bytes.Buffer{}},
+		Reader: bufio.NewReader(buf),
+	}
+}
+
 // mockExecClient implements a mock Docker client for testing exec functionality
 type mockExecClient struct {
 	containers         []container.Summary
@@ -349,6 +371,86 @@ func TestExecuteCommandInContainer(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+// mockUserCapturingExecClient extends mockExecClient to capture the User
+// field passed to ContainerExecCreate so we can assert which OS user the
+// command runs as.
+type mockUserCapturingExecClient struct {
+	*mockExecClient
+	capturedUser string
+}
+
+func (m *mockUserCapturingExecClient) ContainerExecCreate(ctx context.Context, containerID string, config container.ExecOptions) (container.ExecCreateResponse, error) {
+	m.capturedUser = config.User
+	return m.mockExecClient.ContainerExecCreate(ctx, containerID, config)
+}
+
+func TestExecuteCommandInContainer_PrefersRemoteUser(t *testing.T) {
+	devContainer := &devcontainer.DevContainer{
+		ContainerUser:   "root",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspace",
+	}
+	containers := []container.Summary{
+		{
+			ID:    "abc",
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				constants.DevgoManagedLabel: constants.DevgoManagedValue,
+			},
+		},
+	}
+	base := &mockExecClient{
+		containers:         containers,
+		execCreateResponse: container.ExecCreateResponse{ID: "exec1"},
+		execAttachResponse: createMockHijackedResponseValid(),
+		inspectResponse: types.ContainerJSON{
+			Config: &container.Config{Env: []string{"PATH=/usr/bin"}},
+		},
+	}
+	mock := &mockUserCapturingExecClient{mockExecClient: base}
+
+	if err := executeCommandInContainer(context.Background(), mock, "test-container", []string{"whoami"}, devContainer); err != nil {
+		t.Fatalf("executeCommandInContainer error = %v", err)
+	}
+
+	if mock.capturedUser != "vscode" {
+		t.Errorf("expected exec to run as remoteUser %q, got %q", "vscode", mock.capturedUser)
+	}
+}
+
+func TestExecuteCommandInContainer_FallsBackToContainerUser(t *testing.T) {
+	devContainer := &devcontainer.DevContainer{
+		ContainerUser:   "node",
+		WorkspaceFolder: "/workspace",
+	}
+	containers := []container.Summary{
+		{
+			ID:    "abc",
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				constants.DevgoManagedLabel: constants.DevgoManagedValue,
+			},
+		},
+	}
+	base := &mockExecClient{
+		containers:         containers,
+		execCreateResponse: container.ExecCreateResponse{ID: "exec1"},
+		execAttachResponse: createMockHijackedResponseValid(),
+		inspectResponse: types.ContainerJSON{
+			Config: &container.Config{Env: []string{"PATH=/usr/bin"}},
+		},
+	}
+	mock := &mockUserCapturingExecClient{mockExecClient: base}
+
+	if err := executeCommandInContainer(context.Background(), mock, "test-container", []string{"whoami"}, devContainer); err != nil {
+		t.Fatalf("executeCommandInContainer error = %v", err)
+	}
+
+	if mock.capturedUser != "node" {
+		t.Errorf("expected exec to fall back to containerUser %q, got %q", "node", mock.capturedUser)
 	}
 }
 

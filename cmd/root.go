@@ -15,17 +15,23 @@ import (
 )
 
 var (
-	workspaceFolder string
-	configPath      string
-	forceBuild      bool
-	containerName   string
-	imageName       string
-	sessionName     string
-	push            bool
-	pull            bool
-	verbose         bool
-	showHelp        bool
-	showVersion     bool
+	workspaceFolder        string
+	configPath             string
+	forceBuild             bool
+	containerName          string
+	imageName              string
+	sessionName            string
+	push                   bool
+	pull                   bool
+	verbose                bool
+	showHelp               bool
+	showVersion            bool
+	dotfilesRepository     string
+	dotfilesTargetPath     string
+	dotfilesInstallCommand string
+	noDotfiles             bool
+	forceDotfiles          bool
+	shellOverride          string
 )
 
 // parseAllFlags parses all flags from the argument list, returning non-flag arguments
@@ -61,6 +67,22 @@ func parseAllFlags(args []string) ([]string, error) {
 			push = true
 		} else if arg == "--pull" {
 			pull = true
+		} else if arg == "--dotfiles-repository" && i+1 < len(args) {
+			dotfilesRepository = args[i+1]
+			i++
+		} else if arg == "--dotfiles-target-path" && i+1 < len(args) {
+			dotfilesTargetPath = args[i+1]
+			i++
+		} else if arg == "--dotfiles-install-command" && i+1 < len(args) {
+			dotfilesInstallCommand = args[i+1]
+			i++
+		} else if arg == "--no-dotfiles" {
+			noDotfiles = true
+		} else if arg == "--force-dotfiles" {
+			forceDotfiles = true
+		} else if arg == "--shell" && i+1 < len(args) {
+			shellOverride = args[i+1]
+			i++
 		} else if len(arg) > 2 && arg[:2] == "--" {
 			// Check if this is an unknown flag
 			return nil, fmt.Errorf("unknown option: %s", arg)
@@ -124,6 +146,13 @@ func Execute() error {
 	}
 }
 
+// warnf prints a "Warning: ..." message to stderr. Use this for non-fatal
+// problems where the command continues; reserve stdout for the command's
+// real output so warnings don't pollute pipelines.
+func warnf(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, "Warning: "+format+"\n", args...)
+}
+
 func showUsage() {
 	fmt.Fprintf(os.Stderr, `devgo - Run commands in a devcontainer based on devcontainer.json
 
@@ -165,6 +194,18 @@ Flags:
         Show version
   --workspace-folder string
         Path to workspace folder
+  --dotfiles-repository string
+        URL of the personal dotfiles repository to clone into the container
+  --dotfiles-target-path string
+        Path inside the container where the dotfiles repo is cloned (default "~/dotfiles")
+  --dotfiles-install-command string
+        Install script to run after cloning (relative to target path)
+  --no-dotfiles
+        Disable dotfiles processing for this invocation
+  --force-dotfiles
+        Re-clone the dotfiles repository even if the target path already exists
+  --shell string
+        Program to launch for 'devgo shell' (overrides shell setting in user config; defaults to /bin/bash)
 
 Examples:
   devgo up --workspace-folder .
