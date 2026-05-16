@@ -346,28 +346,28 @@ func TestInitCommandIntegration(t *testing.T) {
 	}
 }
 
-func TestInitCommandWithVerbose(t *testing.T) {
-	// Test that verbose flag works (doesn't cause errors)
-	tempDir, err := os.MkdirTemp("", "devgo-test-verbose")
+func TestInitCommandWithDebug(t *testing.T) {
+	// Test that the debug flag works (doesn't cause errors)
+	tempDir, err := os.MkdirTemp("", "devgo-test-debug")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Save and restore verbose flag
-	originalVerbose := verbose
-	defer func() { verbose = originalVerbose }()
+	// Save and restore debug flag
+	originalDebug := debug
+	defer func() { debug = originalDebug }()
 
-	verbose = true
+	debug = true
 	err = runInitCommand([]string{tempDir})
 	if err != nil {
-		t.Errorf("init with verbose flag failed: %v", err)
+		t.Errorf("init with debug flag failed: %v", err)
 	}
 
 	// Verify file was created
 	devcontainerPath := filepath.Join(tempDir, ".devcontainer", "devcontainer.json")
 	if _, err := os.Stat(devcontainerPath); os.IsNotExist(err) {
-		t.Error("expected devcontainer.json to be created with verbose flag")
+		t.Error("expected devcontainer.json to be created with debug flag")
 	}
 }
 

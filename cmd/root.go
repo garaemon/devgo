@@ -23,7 +23,7 @@ var (
 	sessionName            string
 	push                   bool
 	pull                   bool
-	verbose                bool
+	debug                  bool
 	showHelp               bool
 	showVersion            bool
 	dotfilesRepository     string
@@ -44,8 +44,8 @@ func parseAllFlags(args []string) ([]string, error) {
 			showHelp = true
 		} else if arg == "--version" {
 			showVersion = true
-		} else if arg == "--verbose" {
-			verbose = true
+		} else if arg == "--debug" || arg == "--verbose" {
+			debug = true
 		} else if arg == "--workspace-folder" && i+1 < len(args) {
 			workspaceFolder = args[i+1]
 			i++ // skip the next argument as it's the value
@@ -149,8 +149,28 @@ func Execute() error {
 // warnf prints a "Warning: ..." message to stderr. Use this for non-fatal
 // problems where the command continues; reserve stdout for the command's
 // real output so warnings don't pollute pipelines.
-func warnf(format string, args ...interface{}) {
+func warnf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "Warning: "+format+"\n", args...)
+}
+
+// debugf writes a status/progress message to stderr only when --debug is
+// enabled. Use this for informational logs that would clutter normal output
+// (container lifecycle, image pulls, dotfiles progress, etc.).
+func debugf(format string, args ...any) {
+	if !debug {
+		return
+	}
+	fmt.Fprintf(os.Stderr, format, args...)
+}
+
+// debugln writes a line of status/progress to stderr only when --debug is
+// enabled. Counterpart to debugf for callers that just want to emit a fixed
+// string without formatting.
+func debugln(args ...any) {
+	if !debug {
+		return
+	}
+	fmt.Fprintln(os.Stderr, args...)
 }
 
 func showUsage() {
@@ -174,6 +194,10 @@ Commands:
 Flags:
   --config string
         Path to devcontainer.json file
+  --debug
+        Print container lifecycle, dotfiles, and other progress messages
+        to stderr. Without this flag devgo stays quiet on success.
+        --verbose is accepted as a deprecated alias.
   --force-build
         Force rebuild of container
   --help
@@ -188,8 +212,6 @@ Flags:
         Force pull image before starting container
   --session string
         Session name for running multiple containers (default "default")
-  --verbose
-        Enable verbose output
   --version
         Show version
   --workspace-folder string
@@ -222,15 +244,15 @@ func showVersionInfo() {
 
 func runDevContainer(args []string) error {
 	// TODO: Implement actual functionality
-	fmt.Printf("devgo called with args: %v\n", args)
-	fmt.Printf("config: %s, build: %t, name: %s\n", configPath, forceBuild, containerName)
+	debugf("devgo called with args: %v\n", args)
+	debugf("config: %s, build: %t, name: %s\n", configPath, forceBuild, containerName)
 
 	devcontainerPath, err := findDevcontainerConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to find devcontainer config: %w", err)
 	}
 
-	fmt.Printf("Found devcontainer config at: %s\n", devcontainerPath)
+	debugf("Found devcontainer config at: %s\n", devcontainerPath)
 	return nil
 }
 
@@ -245,9 +267,7 @@ func findDevcontainerConfig(configPath string) (string, error) {
 	}
 
 	for dir := cwd; dir != "/"; dir = filepath.Dir(dir) {
-		if verbose {
-			fmt.Printf("Checking directory: %s\n", dir)
-		}
+		debugf("Checking directory: %s\n", dir)
 
 		configFile := filepath.Join(dir, ".devcontainer", "devcontainer.json")
 		if _, err := os.Stat(configFile); err == nil {

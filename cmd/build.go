@@ -21,9 +21,7 @@ func runBuildCommand(args []string) error {
 		return fmt.Errorf("failed to find devcontainer config: %w", err)
 	}
 
-	if verbose {
-		fmt.Printf("Using devcontainer config: %s\n", devcontainerPath)
-	}
+	debugf("Using devcontainer config: %s\n", devcontainerPath)
 
 	devContainer, err := devcontainer.Parse(devcontainerPath)
 	if err != nil {
@@ -43,11 +41,9 @@ func buildDevContainer(devContainer *devcontainer.DevContainer, workspaceDir, de
 
 	imageTag := determineImageTag(devContainer, workspaceDir)
 
-	if verbose {
-		fmt.Printf("Building image: %s\n", imageTag)
-		fmt.Printf("Dockerfile: %s\n", dockerfilePath)
-		fmt.Printf("Build context: %s\n", buildContext)
-	}
+	debugf("Building image: %s\n", imageTag)
+	debugf("Dockerfile: %s\n", dockerfilePath)
+	debugf("Build context: %s\n", buildContext)
 
 	buildArgs := []string{"build", "-t", imageTag, "-f", dockerfilePath}
 
@@ -81,15 +77,13 @@ func buildDevContainer(devContainer *devcontainer.DevContainer, workspaceDir, de
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if verbose {
-		fmt.Printf("Running: docker %s\n", strings.Join(buildArgs, " "))
-	}
+	debugf("Running: docker %s\n", strings.Join(buildArgs, " "))
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("docker build failed: %w", err)
 	}
 
-	fmt.Printf("Successfully built image: %s\n", imageTag)
+	debugf("Successfully built image: %s\n", imageTag)
 
 	if push {
 		return pushImage(imageTag)
@@ -135,9 +129,7 @@ func determineImageTag(devContainer *devcontainer.DevContainer, workspaceDir str
 }
 
 func pushImage(imageTag string) error {
-	if verbose {
-		fmt.Printf("Pushing image: %s\n", imageTag)
-	}
+	debugf("Pushing image: %s\n", imageTag)
 
 	cmd := exec.Command("docker", "push", imageTag)
 	cmd.Stdout = os.Stdout
@@ -147,7 +139,7 @@ func pushImage(imageTag string) error {
 		return fmt.Errorf("docker push failed: %w", err)
 	}
 
-	fmt.Printf("Successfully pushed image: %s\n", imageTag)
+	debugf("Successfully pushed image: %s\n", imageTag)
 	return nil
 }
 

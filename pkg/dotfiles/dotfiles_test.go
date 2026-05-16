@@ -123,7 +123,7 @@ func (f *fakeExec) commandsContaining(substr string) int {
 
 func TestApply_NilConfig_NoOp(t *testing.T) {
 	exec := &fakeExec{}
-	if err := Apply(context.Background(), exec, "user", nil, false); err != nil {
+	if err := Apply(context.Background(), exec, "user", nil, false, nil); err != nil {
 		t.Errorf("Apply(nil) error = %v, want nil", err)
 	}
 	if len(exec.calls) != 0 {
@@ -138,7 +138,7 @@ func TestApply_SkipsWhenTargetExistsAndNotForce(t *testing.T) {
 		},
 	}
 	cfg := &Config{Repository: "https://example.com/x", TargetPath: "/home/u/df"}
-	if err := Apply(context.Background(), exec, "u", cfg, false); err != nil {
+	if err := Apply(context.Background(), exec, "u", cfg, false, nil); err != nil {
 		t.Fatalf("Apply error = %v", err)
 	}
 	if exec.commandsContaining("git clone") != 0 {
@@ -156,7 +156,7 @@ func TestApply_ForceRemovesAndReclones(t *testing.T) {
 		},
 	}
 	cfg := &Config{Repository: "https://example.com/x", TargetPath: "/home/u/df"}
-	if err := Apply(context.Background(), exec, "u", cfg, true); err != nil {
+	if err := Apply(context.Background(), exec, "u", cfg, true, nil); err != nil {
 		t.Fatalf("Apply error = %v", err)
 	}
 	if exec.commandsContaining("rm -rf") != 1 {
@@ -180,7 +180,7 @@ func TestApply_RunsExplicitInstallCommand(t *testing.T) {
 		TargetPath:     "~/df",
 		InstallCommand: "bootstrap.sh",
 	}
-	if err := Apply(context.Background(), exec, "u", cfg, false); err != nil {
+	if err := Apply(context.Background(), exec, "u", cfg, false, nil); err != nil {
 		t.Fatalf("Apply error = %v", err)
 	}
 	if exec.commandsContaining("./bootstrap.sh") != 1 {
@@ -203,7 +203,7 @@ func TestApply_FailsWhenExplicitInstallCommandMissing(t *testing.T) {
 		TargetPath:     "~/df",
 		InstallCommand: "missing.sh",
 	}
-	err := Apply(context.Background(), exec, "u", cfg, false)
+	err := Apply(context.Background(), exec, "u", cfg, false, nil)
 	if err == nil {
 		t.Fatalf("expected Apply to error when explicit install command is missing")
 	}
@@ -224,7 +224,7 @@ func TestApply_DetectsDefaultInstallScript(t *testing.T) {
 		{contains: "[ -e", exitCode: 1}, // target path probe and any others
 	}
 	cfg := &Config{Repository: "https://example.com/x", TargetPath: "~/df"}
-	if err := Apply(context.Background(), exec, "u", cfg, false); err != nil {
+	if err := Apply(context.Background(), exec, "u", cfg, false, nil); err != nil {
 		t.Fatalf("Apply error = %v", err)
 	}
 	if exec.commandsContaining("./bootstrap.sh") != 1 {
@@ -309,7 +309,7 @@ func TestResolveHome_RejectsOtherUserForm(t *testing.T) {
 
 func TestApply_RejectsOtherUserPath(t *testing.T) {
 	cfg := &Config{Repository: "https://example.com/x", TargetPath: "~someone/df"}
-	err := Apply(context.Background(), &fakeExec{}, "u", cfg, false)
+	err := Apply(context.Background(), &fakeExec{}, "u", cfg, false, nil)
 	if err == nil {
 		t.Fatalf("expected wrapped ~user error from Apply, got nil")
 	}
@@ -326,7 +326,7 @@ func TestApply_PropagatesInstallScriptFailure(t *testing.T) {
 		{contains: "&& './install.sh'", stdout: "starting", stderr: "boom", exitCode: 2},
 	}}
 	cfg := &Config{Repository: "https://example.com/x", TargetPath: "~/df"}
-	err := Apply(context.Background(), exec, "u", cfg, false)
+	err := Apply(context.Background(), exec, "u", cfg, false, nil)
 	if err == nil {
 		t.Fatalf("expected install script error, got nil")
 	}
@@ -346,7 +346,7 @@ func TestApply_InstallScriptExit126_AddsExecutableHint(t *testing.T) {
 		{contains: "&& './install.sh'", stderr: "Permission denied", exitCode: 126},
 	}}
 	cfg := &Config{Repository: "https://example.com/x", TargetPath: "~/df"}
-	err := Apply(context.Background(), exec, "u", cfg, false)
+	err := Apply(context.Background(), exec, "u", cfg, false, nil)
 	if err == nil {
 		t.Fatalf("expected error for exit 126, got nil")
 	}
@@ -374,7 +374,7 @@ func TestApply_NeverPassesUnresolvedTilde(t *testing.T) {
 		},
 	}
 	cfg := &Config{Repository: "https://example.com/x", TargetPath: "~/dotfiles"}
-	if err := Apply(context.Background(), exec, "u", cfg, false); err != nil {
+	if err := Apply(context.Background(), exec, "u", cfg, false, nil); err != nil {
 		t.Fatalf("Apply error = %v", err)
 	}
 	for i, c := range exec.calls {
@@ -403,7 +403,7 @@ func TestApply_DefaultConfig_DoesNotCloneIntoBareHome(t *testing.T) {
 	if resolved == nil {
 		t.Fatalf("Resolve returned nil")
 	}
-	if err := Apply(context.Background(), exec, "u", resolved, false); err != nil {
+	if err := Apply(context.Background(), exec, "u", resolved, false, nil); err != nil {
 		t.Fatalf("Apply error = %v", err)
 	}
 	if exec.commandsContaining("git clone") == 0 {
@@ -431,7 +431,7 @@ func TestApply_NoInstallScriptFound_LeavesCloneInPlace(t *testing.T) {
 		},
 	}
 	cfg := &Config{Repository: "https://example.com/x", TargetPath: "/home/u/df"}
-	if err := Apply(context.Background(), exec, "u", cfg, false); err != nil {
+	if err := Apply(context.Background(), exec, "u", cfg, false, nil); err != nil {
 		t.Fatalf("Apply error = %v", err)
 	}
 	if exec.commandsContaining("git clone") != 1 {

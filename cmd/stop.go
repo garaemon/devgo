@@ -32,7 +32,7 @@ func runStopCommand(args []string) error {
 	}
 	defer func() {
 		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+			warnf("failed to close Docker client: %v", closeErr)
 		}
 	}()
 
@@ -67,16 +67,16 @@ func stopContainer(ctx context.Context, cli *client.Client, containerName string
 	}
 
 	if !found {
-		fmt.Printf("Container '%s' is not running\n", containerName)
+		debugf("Container '%s' is not running\n", containerName)
 		return nil
 	}
 
-	fmt.Printf("Stopping container '%s'\n", containerName)
+	debugf("Stopping container '%s'\n", containerName)
 	err = cli.ContainerStop(ctx, containerName, container.StopOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to stop container '%s': %w", containerName, err)
 	}
 
-	fmt.Printf("Container '%s' stopped successfully\n", containerName)
+	debugf("Container '%s' stopped successfully\n", containerName)
 	return nil
 }
