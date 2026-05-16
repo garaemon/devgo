@@ -70,7 +70,7 @@ func TestParseAllFlags(t *testing.T) {
 			// Reset global flags before each test
 			showHelp = false
 			showVersion = false
-			verbose = false
+			debug = false
 			workspaceFolder = ""
 			configPath = ""
 			containerName = ""
@@ -115,7 +115,7 @@ func TestParseAllFlags_FlagValues(t *testing.T) {
 		expectForceBuild      bool
 		expectPush            bool
 		expectPull            bool
-		expectVerbose         bool
+		expectDebug           bool
 		expectHelp            bool
 		expectVersion         bool
 	}{
@@ -160,9 +160,14 @@ func TestParseAllFlags_FlagValues(t *testing.T) {
 			expectPull: true,
 		},
 		{
-			name:          "verbose flag",
-			args:          []string{"--verbose"},
-			expectVerbose: true,
+			name:        "debug flag",
+			args:        []string{"--debug"},
+			expectDebug: true,
+		},
+		{
+			name:        "verbose alias still enables debug",
+			args:        []string{"--verbose"},
+			expectDebug: true,
 		},
 		{
 			name:       "help flag",
@@ -180,12 +185,12 @@ func TestParseAllFlags_FlagValues(t *testing.T) {
 				"--workspace-folder", "/test",
 				"--config", "config.json",
 				"--force-build",
-				"--verbose",
+				"--debug",
 			},
 			expectWorkspaceFolder: "/test",
 			expectConfigPath:      "config.json",
 			expectForceBuild:      true,
-			expectVerbose:         true,
+			expectDebug:           true,
 		},
 	}
 
@@ -194,7 +199,7 @@ func TestParseAllFlags_FlagValues(t *testing.T) {
 			// Reset global flags before each test
 			showHelp = false
 			showVersion = false
-			verbose = false
+			debug = false
 			workspaceFolder = ""
 			configPath = ""
 			containerName = ""
@@ -234,8 +239,8 @@ func TestParseAllFlags_FlagValues(t *testing.T) {
 			if pull != tt.expectPull {
 				t.Errorf("pull = %v, want %v", pull, tt.expectPull)
 			}
-			if verbose != tt.expectVerbose {
-				t.Errorf("verbose = %v, want %v", verbose, tt.expectVerbose)
+			if debug != tt.expectDebug {
+				t.Errorf("debug = %v, want %v", debug, tt.expectDebug)
 			}
 			if showHelp != tt.expectHelp {
 				t.Errorf("showHelp = %v, want %v", showHelp, tt.expectHelp)

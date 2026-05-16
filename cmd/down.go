@@ -40,7 +40,7 @@ func runDownCommand(args []string) error {
 	}
 	defer func() {
 		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+			warnf("failed to close Docker client: %v", closeErr)
 		}
 	}()
 
@@ -80,27 +80,27 @@ func stopAndRemoveContainer(ctx context.Context, cli DownDockerClient, container
 	}
 
 	if !found {
-		fmt.Printf("Container '%s' does not exist\n", containerName)
+		debugf("Container '%s' does not exist\n", containerName)
 		return nil
 	}
 
 	// Stop container if it's running
 	if isRunning {
-		fmt.Printf("Stopping container '%s'\n", containerName)
+		debugf("Stopping container '%s'\n", containerName)
 		err = cli.ContainerStop(ctx, containerID, container.StopOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to stop container '%s': %w", containerName, err)
 		}
-		fmt.Printf("Container '%s' stopped\n", containerName)
+		debugf("Container '%s' stopped\n", containerName)
 	}
 
 	// Remove container
-	fmt.Printf("Removing container '%s'\n", containerName)
+	debugf("Removing container '%s'\n", containerName)
 	err = cli.ContainerRemove(ctx, containerID, container.RemoveOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to remove container '%s': %w", containerName, err)
 	}
 
-	fmt.Printf("Container '%s' removed successfully\n", containerName)
+	debugf("Container '%s' removed successfully\n", containerName)
 	return nil
 }

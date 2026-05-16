@@ -54,7 +54,7 @@ func runShellCommand(args []string) error {
 	}
 	defer func() {
 		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+			warnf("failed to close Docker client: %v", closeErr)
 		}
 	}()
 
@@ -111,7 +111,7 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		width, height, err := term.GetSize(stdinFd)
 		if err == nil {
 			consoleSize = &[2]uint{uint(height), uint(width)}
-			if verbose {
+			if debug {
 				fmt.Printf("Terminal size: %dx%d (cols x rows)\n", width, height)
 			}
 		}
@@ -130,7 +130,7 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		DetachKeys:   "ctrl-@", // Use ctrl-@ instead of default ctrl-p,ctrl-q to allow ctrl-p for history
 	}
 
-	if verbose {
+	if debug {
 		fmt.Printf("Creating exec instance with config:\n")
 		fmt.Printf("  User: %s\n", user)
 		fmt.Printf("  Tty: %v\n", execConfig.Tty)
@@ -152,29 +152,29 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		return fmt.Errorf("failed to create exec instance: %w", err)
 	}
 
-	if verbose {
+	if debug {
 		fmt.Printf("Exec instance created with ID: %s\n", execCreateResp.ID)
 	}
 
 	// Check if stdin is a terminal and set raw mode
 	var oldState *term.State
 	if term.IsTerminal(stdinFd) {
-		if verbose {
+		if debug {
 			fmt.Printf("Setting terminal to raw mode (fd: %d)\n", stdinFd)
 		}
 		oldState, err = term.MakeRaw(stdinFd)
 		if err != nil {
 			return fmt.Errorf("failed to set terminal to raw mode: %w", err)
 		}
-		if verbose {
+		if debug {
 			fmt.Printf("Terminal set to raw mode successfully\n")
 		}
 		defer func() {
 			if restoreErr := term.Restore(stdinFd, oldState); restoreErr != nil {
-				fmt.Printf("Warning: failed to restore terminal: %v\n", restoreErr)
+				warnf("failed to restore terminal: %v", restoreErr)
 			}
 		}()
-	} else if verbose {
+	} else if debug {
 		fmt.Printf("Warning: stdin is not a terminal (fd: %d)\n", stdinFd)
 	}
 
@@ -190,7 +190,7 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 	}()
 
 	// Attach to the exec instance to get HijackedResponse
-	if verbose {
+	if debug {
 		fmt.Printf("Attaching to exec instance %s\n", execCreateResp.ID)
 	}
 	execAttachResp, err := cli.ContainerExecAttach(ctx, execCreateResp.ID, container.ExecAttachOptions{
@@ -200,20 +200,20 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		return fmt.Errorf("failed to attach to exec instance: %w", err)
 	}
 	defer execAttachResp.Close()
-	if verbose {
+	if debug {
 		fmt.Printf("Successfully attached to exec instance\n")
 	}
 
 	// Start the exec instance in a separate goroutine
 	// This must be done AFTER attach and runs concurrently with I/O
-	if verbose {
+	if debug {
 		fmt.Printf("Starting exec instance in background\n")
 	}
 	go func() {
 		startErr := cli.ContainerExecStart(ctx, execCreateResp.ID, container.ExecStartOptions{
 			Tty: true,
 		})
-		if verbose {
+		if debug {
 			if startErr != nil {
 				fmt.Printf("ExecStart error: %v\n", startErr)
 			} else {
@@ -223,27 +223,27 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 	}()
 
 	// Handle TTY I/O
-	if verbose {
+	if debug {
 		fmt.Printf("Starting I/O operations\n")
 	}
 
 	// Copy stdin to container in background
 	go func() {
-		if verbose {
+		if debug {
 			fmt.Printf("Starting stdin -> container copy\n")
 		}
 		_, _ = io.Copy(execAttachResp.Conn, os.Stdin)
-		if verbose {
+		if debug {
 			fmt.Printf("Stdin copy completed\n")
 		}
 	}()
 
 	// Copy container output to stdout (blocks until exec finishes)
-	if verbose {
+	if debug {
 		fmt.Printf("Starting container -> stdout copy (blocking)\n")
 	}
 	_, err = io.Copy(os.Stdout, execAttachResp.Reader)
-	if verbose {
+	if debug {
 		fmt.Printf("Stdout copy completed: err=%v\n", err)
 	}
 
@@ -251,7 +251,7 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		return fmt.Errorf("failed to handle interactive session: %w", err)
 	}
 
-	if verbose {
+	if debug {
 		fmt.Printf("Shell session completed successfully\n")
 	}
 

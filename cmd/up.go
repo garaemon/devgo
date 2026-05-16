@@ -99,7 +99,7 @@ func runUpCommand(args []string) error {
 	}
 	defer func() {
 		if closeErr := dockerClient.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+			warnf("failed to close Docker client: %v", closeErr)
 		}
 	}()
 
@@ -127,7 +127,7 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 			return fmt.Errorf("failed to find devcontainer config: %w", err)
 		}
 
-		fmt.Println("No image specified, building from Dockerfile...")
+		debugln("No image specified, building from Dockerfile...")
 		if err := buildDevContainer(devContainer, workspaceDir, devcontainerPath); err != nil {
 			return fmt.Errorf("failed to build dev container: %w", err)
 		}
@@ -160,9 +160,9 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 	// Pull image if needed
 	if shouldPullImage {
 		if pull {
-			fmt.Printf("Pulling image '%s'\n", devContainer.Image)
+			debugf("Pulling image '%s'\n", devContainer.Image)
 		} else {
-			fmt.Printf("Image '%s' not found locally, pulling...\n", devContainer.Image)
+			debugf("Image '%s' not found locally, pulling...\n", devContainer.Image)
 		}
 		if err := dockerClient.PullImage(ctx, devContainer.Image); err != nil {
 			return fmt.Errorf("failed to pull image '%s': %w", devContainer.Image, err)
@@ -183,7 +183,7 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 		if running {
 			return fmt.Errorf("container '%s' is already running", containerName)
 		}
-		fmt.Printf("Container '%s' exists but is stopped, removing and recreating it to apply configuration changes\n", containerName)
+		debugf("Container '%s' exists but is stopped, removing and recreating it to apply configuration changes\n", containerName)
 		
 		// Use raw docker client to remove the container
 		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -196,13 +196,13 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 	// Get base environment variables from image for expansion
 	baseEnv, err := getImageEnv(ctx, devContainer.Image)
 	if err != nil {
-		fmt.Printf("Warning: failed to get base environment variables from image: %v\n", err)
+		warnf("failed to get base environment variables from image: %v", err)
 		baseEnv = make(map[string]string)
 	}
 
 	expandedEnv := devContainer.GetContainerEnv(baseEnv)
 
-	fmt.Printf("Creating and starting container '%s' with image '%s'\n", containerName, devContainer.Image)
+	debugf("Creating and starting container '%s' with image '%s'\n", containerName, devContainer.Image)
 
 	dockerArgs := DockerRunArgs{
 		Name:            containerName,
@@ -225,7 +225,7 @@ func executeOnCreateCommand(ctx context.Context, devContainer *devcontainer.DevC
 		return nil
 	}
 
-	fmt.Printf("Running onCreateCommand: %s\n", strings.Join(onCreateArgs, " "))
+	debugf("Running onCreateCommand: %s\n", strings.Join(onCreateArgs, " "))
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -233,7 +233,7 @@ func executeOnCreateCommand(ctx context.Context, devContainer *devcontainer.DevC
 	}
 	defer func() {
 		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+			warnf("failed to close Docker client: %v", closeErr)
 		}
 	}()
 
@@ -241,7 +241,7 @@ func executeOnCreateCommand(ctx context.Context, devContainer *devcontainer.DevC
 		return err
 	}
 
-	fmt.Println("Finished onCreateCommand")
+	debugln("Finished onCreateCommand")
 	return nil
 }
 
@@ -251,7 +251,7 @@ func executeUpdateContentCommand(ctx context.Context, devContainer *devcontainer
 		return nil
 	}
 
-	fmt.Printf("Running updateContentCommand: %s\n", strings.Join(updateContentArgs, " "))
+	debugf("Running updateContentCommand: %s\n", strings.Join(updateContentArgs, " "))
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -259,7 +259,7 @@ func executeUpdateContentCommand(ctx context.Context, devContainer *devcontainer
 	}
 	defer func() {
 		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+			warnf("failed to close Docker client: %v", closeErr)
 		}
 	}()
 
@@ -267,7 +267,7 @@ func executeUpdateContentCommand(ctx context.Context, devContainer *devcontainer
 		return err
 	}
 
-	fmt.Println("Finished updateContentCommand")
+	debugln("Finished updateContentCommand")
 	return nil
 }
 
@@ -277,7 +277,7 @@ func executePostCreateCommand(ctx context.Context, devContainer *devcontainer.De
 		return nil
 	}
 
-	fmt.Printf("Running postCreateCommand: %s\n", strings.Join(postCreateArgs, " "))
+	debugf("Running postCreateCommand: %s\n", strings.Join(postCreateArgs, " "))
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -285,7 +285,7 @@ func executePostCreateCommand(ctx context.Context, devContainer *devcontainer.De
 	}
 	defer func() {
 		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+			warnf("failed to close Docker client: %v", closeErr)
 		}
 	}()
 
@@ -293,7 +293,7 @@ func executePostCreateCommand(ctx context.Context, devContainer *devcontainer.De
 		return err
 	}
 
-	fmt.Println("Finished postCreateCommand")
+	debugln("Finished postCreateCommand")
 	return nil
 }
 
@@ -303,7 +303,7 @@ func executePostStartCommand(ctx context.Context, devContainer *devcontainer.Dev
 		return nil
 	}
 
-	fmt.Printf("Running postStartCommand: %s\n", strings.Join(postStartArgs, " "))
+	debugf("Running postStartCommand: %s\n", strings.Join(postStartArgs, " "))
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -311,7 +311,7 @@ func executePostStartCommand(ctx context.Context, devContainer *devcontainer.Dev
 	}
 	defer func() {
 		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+			warnf("failed to close Docker client: %v", closeErr)
 		}
 	}()
 
@@ -319,7 +319,7 @@ func executePostStartCommand(ctx context.Context, devContainer *devcontainer.Dev
 		return err
 	}
 
-	fmt.Println("Finished postStartCommand")
+	debugln("Finished postStartCommand")
 	return nil
 }
 
@@ -329,7 +329,7 @@ func executePostAttachCommand(ctx context.Context, devContainer *devcontainer.De
 		return nil
 	}
 
-	fmt.Printf("Running postAttachCommand: %s\n", strings.Join(postAttachArgs, " "))
+	debugf("Running postAttachCommand: %s\n", strings.Join(postAttachArgs, " "))
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -337,7 +337,7 @@ func executePostAttachCommand(ctx context.Context, devContainer *devcontainer.De
 	}
 	defer func() {
 		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+			warnf("failed to close Docker client: %v", closeErr)
 		}
 	}()
 
@@ -345,7 +345,7 @@ func executePostAttachCommand(ctx context.Context, devContainer *devcontainer.De
 		return err
 	}
 
-	fmt.Println("Finished postAttachCommand")
+	debugln("Finished postAttachCommand")
 	return nil
 }
 
@@ -355,7 +355,7 @@ func executeInitializeCommand(devContainer *devcontainer.DevContainer, workspace
 		return nil
 	}
 
-	fmt.Printf("Running initializeCommand: %s\n", strings.Join(initArgs, " "))
+	debugf("Running initializeCommand: %s\n", strings.Join(initArgs, " "))
 
 	cmd := exec.Command(initArgs[0], initArgs[1:]...)
 	cmd.Dir = workspaceDir
@@ -366,7 +366,7 @@ func executeInitializeCommand(devContainer *devcontainer.DevContainer, workspace
 		return fmt.Errorf("initializeCommand failed: %w", err)
 	}
 
-	fmt.Println("Finished initializeCommand")
+	debugln("Finished initializeCommand")
 
 	return nil
 }
@@ -421,7 +421,7 @@ func (r *realDockerClient) StartExistingContainer(ctx context.Context, container
 	if err != nil {
 		return fmt.Errorf("failed to start existing container: %w", err)
 	}
-	fmt.Printf("Container '%s' started successfully\n", containerName)
+	debugf("Container '%s' started successfully\n", containerName)
 	return nil
 }
 
@@ -463,7 +463,7 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 				env = append(env, fmt.Sprintf("%s=%s", key, value))
 			}
 
-			fmt.Printf("SSH agent forwarding enabled: %s -> %s\n",
+			debugf("SSH agent forwarding enabled: %s -> %s\n",
 				hostSocket, mount.Target)
 		}
 	}
@@ -491,7 +491,7 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
-	fmt.Printf("Container '%s' started successfully\n", args.Name)
+	debugf("Container '%s' started successfully\n", args.Name)
 	return nil
 }
 
@@ -518,7 +518,7 @@ func (r *realDockerClient) PullImage(ctx context.Context, imageName string) erro
 	}
 	defer func() {
 		if closeErr := resp.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close pull response: %v\n", closeErr)
+			warnf("failed to close pull response: %v", closeErr)
 		}
 	}()
 
@@ -528,7 +528,7 @@ func (r *realDockerClient) PullImage(ctx context.Context, imageName string) erro
 		return fmt.Errorf("failed to read pull response: %w", err)
 	}
 
-	fmt.Printf("Image '%s' pulled successfully\n", imageName)
+	debugf("Image '%s' pulled successfully\n", imageName)
 	return nil
 }
 
@@ -561,7 +561,7 @@ func updateRemoteUserUID(ctx context.Context, devContainer *devcontainer.DevCont
 	hostUID := os.Getuid()
 	hostGID := os.Getgid()
 
-	fmt.Printf("Updating container user '%s' UID/GID to match host (%d:%d)\n", targetUser, hostUID, hostGID)
+	debugf("Updating container user '%s' UID/GID to match host (%d:%d)\n", targetUser, hostUID, hostGID)
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -601,7 +601,7 @@ func executeLifecycleCommands(ctx context.Context, devContainer *devcontainer.De
 	// Update remote user UID/GID before executing lifecycle commands
 	if err := updateRemoteUserUID(ctx, devContainer, containerName); err != nil {
 		// Only warn, don't fail the entire lifecycle
-		fmt.Printf("Warning: failed to update remote user UID/GID: %v\n", err)
+		warnf("failed to update remote user UID/GID: %v", err)
 	}
 
 	commands := []struct {
@@ -615,7 +615,7 @@ func executeLifecycleCommands(ctx context.Context, devContainer *devcontainer.De
 	}
 
 	waitFor := devContainer.GetWaitFor()
-	fmt.Printf("Executing lifecycle commands up to: %s\n", waitFor)
+	debugf("Executing lifecycle commands up to: %s\n", waitFor)
 
 	// Execute commands synchronously until waitFor
 	for _, cmd := range commands {
@@ -626,7 +626,7 @@ func executeLifecycleCommands(ctx context.Context, devContainer *devcontainer.De
 		}
 	}
 
-	fmt.Printf("Container is ready for use (waitFor: %s completed)\n", waitFor)
+	debugf("Container is ready for use (waitFor: %s completed)\n", waitFor)
 
 	// Execute remaining commands asynchronously
 	var wg sync.WaitGroup
@@ -636,14 +636,14 @@ func executeLifecycleCommands(ctx context.Context, devContainer *devcontainer.De
 		for _, cmd := range commands {
 			if !devContainer.ShouldWaitForCommand(cmd.commandType) {
 				if err := cmd.executor(ctx, devContainer, containerName, workspaceDir); err != nil {
-					fmt.Printf("Background command %s failed: %v\n", cmd.commandType, err)
+					warnf("background command %s failed: %v", cmd.commandType, err)
 				}
 			}
 		}
 
 		// Always execute postAttachCommand last
 		if err := executePostAttachCommand(ctx, devContainer, containerName, workspaceDir); err != nil {
-			fmt.Printf("Background postAttachCommand failed: %v\n", err)
+			warnf("background postAttachCommand failed: %v", err)
 		}
 	}()
 
@@ -680,6 +680,7 @@ func applyDotfiles(ctx context.Context, devContainer *devcontainer.DevContainer,
 	if cfg == nil {
 		return nil
 	}
+	cfg.Logger = debugf
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -701,7 +702,7 @@ func applyDotfiles(ctx context.Context, devContainer *devcontainer.DevContainer,
 
 	executor := newDotfilesExecutor(cli, containerID)
 	user := devContainer.GetTargetUser()
-	fmt.Printf("Checking dotfiles for container %s as user %s\n", containerName, user)
+	debugf("Checking dotfiles for container %s as user %s\n", containerName, user)
 	return dotfiles.Apply(ctx, executor, user, cfg, forceDotfiles)
 }
 
@@ -726,7 +727,7 @@ func startContainerWithDockerCompose(ctx context.Context, devContainer *devconta
 		// Get base environment variables for expansion
 		baseEnv, err := getComposeServiceEnv(workspaceDir, composeFiles, devContainer.GetService())
 		if err != nil {
-			fmt.Printf("Warning: failed to get base environment variables for compose service: %v\n", err)
+			warnf("failed to get base environment variables for compose service: %v", err)
 			baseEnv = make(map[string]string)
 		}
 
@@ -738,7 +739,7 @@ func startContainerWithDockerCompose(ctx context.Context, devContainer *devconta
 		if overrideFile != "" {
 			defer func() {
 				if err := os.Remove(overrideFile); err != nil {
-					fmt.Printf("Warning: failed to remove temporary override file: %v\n", err)
+					warnf("failed to remove temporary override file: %v", err)
 				}
 			}()
 			composeArgs = append(composeArgs, "-f", overrideFile)
@@ -758,12 +759,12 @@ func startContainerWithDockerCompose(ctx context.Context, devContainer *devconta
 	upCmd.Stdout = os.Stdout
 	upCmd.Stderr = os.Stderr
 
-	fmt.Printf("Starting docker compose services: %s\n", strings.Join(runServices, ", "))
+	debugf("Starting docker compose services: %s\n", strings.Join(runServices, ", "))
 	if err := upCmd.Run(); err != nil {
 		return fmt.Errorf("failed to start docker compose services: %w", err)
 	}
 
-	fmt.Printf("Docker compose services started successfully\n")
+	debugf("Docker compose services started successfully\n")
 	return executeLifecycleCommands(ctx, devContainer, containerName, workspaceDir)
 }
 

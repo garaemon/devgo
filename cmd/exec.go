@@ -51,7 +51,7 @@ func runExecCommand(args []string) error {
 	}
 	defer func() {
 		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+			warnf("failed to close Docker client: %v", closeErr)
 		}
 	}()
 

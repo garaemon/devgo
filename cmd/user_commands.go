@@ -50,7 +50,7 @@ func findRunningDevContainer(ctx context.Context, devContainer *devcontainer.Dev
 	}
 	defer func() {
 		if closeErr := cli.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close Docker client: %v\n", closeErr)
+			warnf("failed to close Docker client: %v", closeErr)
 		}
 	}()
 
@@ -117,6 +117,6 @@ func runLifecycleCommands(ctx context.Context, devContainer *devcontainer.DevCon
 		return fmt.Errorf("postAttachCommand failed: %w", err)
 	}
 
-	fmt.Printf("Successfully executed user commands up to %s\n", waitFor)
+	debugf("Successfully executed user commands up to %s\n", waitFor)
 	return nil
 }

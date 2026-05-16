@@ -15,9 +15,7 @@ func runInitCommand(args []string) error {
 		return fmt.Errorf("failed to determine target directory: %w", err)
 	}
 
-	if verbose {
-		fmt.Printf("Target directory: %s\n", targetDir)
-	}
+	debugf("Target directory: %s\n", targetDir)
 
 	// Create .devcontainer directory
 	devcontainerDir := filepath.Join(targetDir, ".devcontainer")
@@ -69,9 +67,7 @@ func determineInitDirectory(args []string) (string, error) {
 	gitRoot, err := findGitRoot()
 	if err != nil {
 		// If not in a git repository, use current directory
-		if verbose {
-			fmt.Fprintf(os.Stderr, "Warning: not in a git repository, using current directory\n")
-		}
+		debugf("Warning: not in a git repository, using current directory\n")
 		cwd, err := os.Getwd()
 		if err != nil {
 			return "", fmt.Errorf("failed to get current directory: %w", err)

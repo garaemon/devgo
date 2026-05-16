@@ -41,6 +41,19 @@ type Config struct {
 	Repository     string
 	TargetPath     string
 	InstallCommand string
+	// Logger receives informational progress messages (clone start,
+	// install completion, "already present" skips). It is invoked exactly
+	// like fmt.Printf — no trailing newline is added. When nil, dotfiles
+	// processing stays silent; the cmd layer wires this to a --debug-gated
+	// logger so the noisy default `devgo up` output goes away.
+	Logger func(format string, args ...any)
+}
+
+func (c *Config) logf(format string, args ...any) {
+	if c == nil || c.Logger == nil {
+		return
+	}
+	c.Logger(format, args...)
 }
 
 // Override holds CLI-supplied values. Empty fields fall back to the user
@@ -126,7 +139,7 @@ func Apply(ctx context.Context, exec Executor, user string, cfg *Config, force b
 
 	if exists {
 		if !force {
-			fmt.Printf("dotfiles target %s already exists, skipping (use --force-dotfiles to overwrite)\n", target)
+			cfg.logf("dotfiles target %s already exists, skipping (use --force-dotfiles to overwrite)\n", target)
 			return nil
 		}
 		if err := removePath(ctx, exec, user, target); err != nil {
@@ -134,7 +147,7 @@ func Apply(ctx context.Context, exec Executor, user string, cfg *Config, force b
 		}
 	}
 
-	fmt.Printf("Applying dotfiles from %s into %s\n", SanitizeRepoURL(cfg.Repository), target)
+	cfg.logf("Applying dotfiles from %s into %s\n", SanitizeRepoURL(cfg.Repository), target)
 	if err := cloneRepo(ctx, exec, user, cfg.Repository, target); err != nil {
 		return fmt.Errorf("failed to clone dotfiles: %w", err)
 	}
@@ -144,7 +157,7 @@ func Apply(ctx context.Context, exec Executor, user string, cfg *Config, force b
 		return fmt.Errorf("failed to resolve install script: %w", err)
 	}
 	if script == "" {
-		fmt.Println("dotfiles cloned; no install script found, skipping install step")
+		cfg.logf("dotfiles cloned; no install script found, skipping install step\n")
 		return nil
 	}
 
@@ -152,7 +165,7 @@ func Apply(ctx context.Context, exec Executor, user string, cfg *Config, force b
 		return fmt.Errorf("install script %s failed: %w", script, err)
 	}
 
-	fmt.Printf("dotfiles installed from %s\n", SanitizeRepoURL(cfg.Repository))
+	cfg.logf("dotfiles installed from %s\n", SanitizeRepoURL(cfg.Repository))
 	return nil
 }
 
