@@ -41,20 +41,20 @@ type Config struct {
 	Repository     string
 	TargetPath     string
 	InstallCommand string
-	// Logger receives informational progress messages (clone start,
-	// install completion, "already present" skips). It is invoked exactly
-	// like fmt.Printf — no trailing newline is added. When nil, dotfiles
-	// processing stays silent; the cmd layer wires this to a --debug-gated
-	// logger so the noisy default `devgo up` output goes away.
-	Logger func(format string, args ...any)
 }
 
-func (c *Config) logf(format string, args ...any) {
-	if c == nil || c.Logger == nil {
-		return
-	}
-	c.Logger(format, args...)
-}
+// Logf is the progress-logging callback Apply uses for informational
+// messages (clone start, install completion, "already present" skips). It
+// is invoked exactly like fmt.Printf — no trailing newline is added. The
+// cmd layer passes a --debug-gated function so the noisy default `devgo
+// up` output goes away; pass nil (or [Discard]) to silence dotfiles
+// progress entirely.
+type Logf func(format string, args ...any)
+
+// Discard is a no-op [Logf]. Callers that do not need progress output (or
+// tests that want silent runs) pass it to Apply so the body can call the
+// logger unconditionally without nil checks.
+func Discard(string, ...any) {}
 
 // Override holds CLI-supplied values. Empty fields fall back to the user
 // config file. Strings are used (not pointers) since dotfiles values are all
@@ -119,12 +119,18 @@ func Resolve(fileCfg *config.DotfilesConfig, override Override, disabled bool) *
 //   - When InstallCommand is empty, devgo probes DefaultInstallScripts in
 //     order and runs the first match. If none match, the clone is left in
 //     place (clone-only mode).
-func Apply(ctx context.Context, exec Executor, user string, cfg *Config, force bool) error {
+//
+// logf receives human-readable progress messages. Pass [Discard] to suppress
+// them; a nil callback is treated the same way.
+func Apply(ctx context.Context, exec Executor, user string, cfg *Config, force bool, logf Logf) error {
 	if cfg == nil {
 		return nil
 	}
 	if cfg.Repository == "" {
 		return fmt.Errorf("dotfiles repository is empty")
+	}
+	if logf == nil {
+		logf = Discard
 	}
 
 	target, err := resolveHome(ctx, exec, user, cfg.TargetPath)
@@ -139,7 +145,7 @@ func Apply(ctx context.Context, exec Executor, user string, cfg *Config, force b
 
 	if exists {
 		if !force {
-			cfg.logf("dotfiles target %s already exists, skipping (use --force-dotfiles to overwrite)\n", target)
+			logf("dotfiles target %s already exists, skipping (use --force-dotfiles to overwrite)\n", target)
 			return nil
 		}
 		if err := removePath(ctx, exec, user, target); err != nil {
@@ -147,7 +153,7 @@ func Apply(ctx context.Context, exec Executor, user string, cfg *Config, force b
 		}
 	}
 
-	cfg.logf("Applying dotfiles from %s into %s\n", SanitizeRepoURL(cfg.Repository), target)
+	logf("Applying dotfiles from %s into %s\n", SanitizeRepoURL(cfg.Repository), target)
 	if err := cloneRepo(ctx, exec, user, cfg.Repository, target); err != nil {
 		return fmt.Errorf("failed to clone dotfiles: %w", err)
 	}
@@ -157,7 +163,7 @@ func Apply(ctx context.Context, exec Executor, user string, cfg *Config, force b
 		return fmt.Errorf("failed to resolve install script: %w", err)
 	}
 	if script == "" {
-		cfg.logf("dotfiles cloned; no install script found, skipping install step\n")
+		logf("dotfiles cloned; no install script found, skipping install step\n")
 		return nil
 	}
 
@@ -165,7 +171,7 @@ func Apply(ctx context.Context, exec Executor, user string, cfg *Config, force b
 		return fmt.Errorf("install script %s failed: %w", script, err)
 	}
 
-	cfg.logf("dotfiles installed from %s\n", SanitizeRepoURL(cfg.Repository))
+	logf("dotfiles installed from %s\n", SanitizeRepoURL(cfg.Repository))
 	return nil
 }
 

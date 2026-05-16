@@ -680,7 +680,6 @@ func applyDotfiles(ctx context.Context, devContainer *devcontainer.DevContainer,
 	if cfg == nil {
 		return nil
 	}
-	cfg.Logger = debugf
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -703,7 +702,7 @@ func applyDotfiles(ctx context.Context, devContainer *devcontainer.DevContainer,
 	executor := newDotfilesExecutor(cli, containerID)
 	user := devContainer.GetTargetUser()
 	debugf("Checking dotfiles for container %s as user %s\n", containerName, user)
-	return dotfiles.Apply(ctx, executor, user, cfg, forceDotfiles)
+	return dotfiles.Apply(ctx, executor, user, cfg, forceDotfiles, debugf)
 }
 
 func startContainerWithDockerCompose(ctx context.Context, devContainer *devcontainer.DevContainer, containerName, workspaceDir string) error {
