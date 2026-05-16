@@ -111,9 +111,7 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		width, height, err := term.GetSize(stdinFd)
 		if err == nil {
 			consoleSize = &[2]uint{uint(height), uint(width)}
-			if debug {
-				fmt.Printf("Terminal size: %dx%d (cols x rows)\n", width, height)
-			}
+			debugf("Terminal size: %dx%d (cols x rows)\n", width, height)
 		}
 	}
 
@@ -130,52 +128,44 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		DetachKeys:   "ctrl-@", // Use ctrl-@ instead of default ctrl-p,ctrl-q to allow ctrl-p for history
 	}
 
-	if debug {
-		fmt.Printf("Creating exec instance with config:\n")
-		fmt.Printf("  User: %s\n", user)
-		fmt.Printf("  Tty: %v\n", execConfig.Tty)
-		fmt.Printf("  AttachStdin: %v\n", execConfig.AttachStdin)
-		fmt.Printf("  AttachStdout: %v\n", execConfig.AttachStdout)
-		fmt.Printf("  AttachStderr: %v\n", execConfig.AttachStderr)
-		fmt.Printf("  Cmd: %v\n", execConfig.Cmd)
-		fmt.Printf("  Env: %v\n", execConfig.Env)
-		fmt.Printf("  DetachKeys: %s (allows ctrl-p for history)\n", execConfig.DetachKeys)
-		if consoleSize != nil {
-			fmt.Printf("  ConsoleSize: %dx%d\n", consoleSize[1], consoleSize[0])
-		}
-		fmt.Printf("  WorkingDir: %s\n", execConfig.WorkingDir)
-		fmt.Printf("  Container ID: %s\n", containerID)
+	debugln("Creating exec instance with config:")
+	debugf("  User: %s\n", user)
+	debugf("  Tty: %v\n", execConfig.Tty)
+	debugf("  AttachStdin: %v\n", execConfig.AttachStdin)
+	debugf("  AttachStdout: %v\n", execConfig.AttachStdout)
+	debugf("  AttachStderr: %v\n", execConfig.AttachStderr)
+	debugf("  Cmd: %v\n", execConfig.Cmd)
+	debugf("  Env: %v\n", execConfig.Env)
+	debugf("  DetachKeys: %s (allows ctrl-p for history)\n", execConfig.DetachKeys)
+	if consoleSize != nil {
+		debugf("  ConsoleSize: %dx%d\n", consoleSize[1], consoleSize[0])
 	}
+	debugf("  WorkingDir: %s\n", execConfig.WorkingDir)
+	debugf("  Container ID: %s\n", containerID)
 
 	execCreateResp, err := cli.ContainerExecCreate(ctx, containerID, execConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create exec instance: %w", err)
 	}
 
-	if debug {
-		fmt.Printf("Exec instance created with ID: %s\n", execCreateResp.ID)
-	}
+	debugf("Exec instance created with ID: %s\n", execCreateResp.ID)
 
 	// Check if stdin is a terminal and set raw mode
 	var oldState *term.State
 	if term.IsTerminal(stdinFd) {
-		if debug {
-			fmt.Printf("Setting terminal to raw mode (fd: %d)\n", stdinFd)
-		}
+		debugf("Setting terminal to raw mode (fd: %d)\n", stdinFd)
 		oldState, err = term.MakeRaw(stdinFd)
 		if err != nil {
 			return fmt.Errorf("failed to set terminal to raw mode: %w", err)
 		}
-		if debug {
-			fmt.Printf("Terminal set to raw mode successfully\n")
-		}
+		debugln("Terminal set to raw mode successfully")
 		defer func() {
 			if restoreErr := term.Restore(stdinFd, oldState); restoreErr != nil {
 				warnf("failed to restore terminal: %v", restoreErr)
 			}
 		}()
-	} else if debug {
-		fmt.Printf("Warning: stdin is not a terminal (fd: %d)\n", stdinFd)
+	} else {
+		debugf("Warning: stdin is not a terminal (fd: %d)\n", stdinFd)
 	}
 
 	// Handle signals to restore terminal state
@@ -190,9 +180,7 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 	}()
 
 	// Attach to the exec instance to get HijackedResponse
-	if debug {
-		fmt.Printf("Attaching to exec instance %s\n", execCreateResp.ID)
-	}
+	debugf("Attaching to exec instance %s\n", execCreateResp.ID)
 	execAttachResp, err := cli.ContainerExecAttach(ctx, execCreateResp.ID, container.ExecAttachOptions{
 		Tty: true,
 	})
@@ -200,60 +188,42 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 		return fmt.Errorf("failed to attach to exec instance: %w", err)
 	}
 	defer execAttachResp.Close()
-	if debug {
-		fmt.Printf("Successfully attached to exec instance\n")
-	}
+	debugln("Successfully attached to exec instance")
 
 	// Start the exec instance in a separate goroutine
 	// This must be done AFTER attach and runs concurrently with I/O
-	if debug {
-		fmt.Printf("Starting exec instance in background\n")
-	}
+	debugln("Starting exec instance in background")
 	go func() {
 		startErr := cli.ContainerExecStart(ctx, execCreateResp.ID, container.ExecStartOptions{
 			Tty: true,
 		})
-		if debug {
-			if startErr != nil {
-				fmt.Printf("ExecStart error: %v\n", startErr)
-			} else {
-				fmt.Printf("ExecStart completed\n")
-			}
+		if startErr != nil {
+			debugf("ExecStart error: %v\n", startErr)
+		} else {
+			debugln("ExecStart completed")
 		}
 	}()
 
 	// Handle TTY I/O
-	if debug {
-		fmt.Printf("Starting I/O operations\n")
-	}
+	debugln("Starting I/O operations")
 
 	// Copy stdin to container in background
 	go func() {
-		if debug {
-			fmt.Printf("Starting stdin -> container copy\n")
-		}
+		debugln("Starting stdin -> container copy")
 		_, _ = io.Copy(execAttachResp.Conn, os.Stdin)
-		if debug {
-			fmt.Printf("Stdin copy completed\n")
-		}
+		debugln("Stdin copy completed")
 	}()
 
 	// Copy container output to stdout (blocks until exec finishes)
-	if debug {
-		fmt.Printf("Starting container -> stdout copy (blocking)\n")
-	}
+	debugln("Starting container -> stdout copy (blocking)")
 	_, err = io.Copy(os.Stdout, execAttachResp.Reader)
-	if debug {
-		fmt.Printf("Stdout copy completed: err=%v\n", err)
-	}
+	debugf("Stdout copy completed: err=%v\n", err)
 
 	if err != nil && err != io.EOF {
 		return fmt.Errorf("failed to handle interactive session: %w", err)
 	}
 
-	if debug {
-		fmt.Printf("Shell session completed successfully\n")
-	}
+	debugln("Shell session completed successfully")
 
 	return nil
 }
