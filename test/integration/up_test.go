@@ -449,11 +449,13 @@ func TestOnCreateCommandIntegration(t *testing.T) {
 				t.Fatalf("Failed to change to working directory: %v", err)
 			}
 
-			// Run devgo up command
+			// Run devgo up command. --debug is required so the lifecycle
+			// progress messages we assert on below are emitted; without it
+			// devgo stays quiet by design.
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
-			cmd := exec.CommandContext(ctx, devgoBinary, "up")
+			cmd := exec.CommandContext(ctx, devgoBinary, "--debug", "up")
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("devgo up failed: %v. Output: %s", err, string(output))
@@ -540,11 +542,13 @@ func TestOnCreateCommandFailure(t *testing.T) {
 		t.Fatalf("Failed to change to working directory: %v", err)
 	}
 
-	// Run devgo up command - should execute onCreateCommand but continue even if it fails
+	// Run devgo up command - should execute onCreateCommand but continue
+	// even if it fails. --debug is required so the lifecycle progress
+	// messages we assert on below are emitted.
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, devgoBinary, "up")
+	cmd := exec.CommandContext(ctx, devgoBinary, "--debug", "up")
 	output, err := cmd.CombinedOutput()
 
 	// Current implementation continues even if onCreateCommand fails
@@ -758,11 +762,12 @@ func TestUpdateRemoteUserUIDIntegration(t *testing.T) {
 				t.Fatalf("Failed to change to working directory: %v", err)
 			}
 
-			// Run devgo up command
+			// Run devgo up command. --debug is required so the UID/GID
+			// progress message we look for below is emitted.
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
-			cmd := exec.CommandContext(ctx, devgoBinary, "up")
+			cmd := exec.CommandContext(ctx, devgoBinary, "--debug", "up")
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("devgo up failed: %v. Output: %s", err, string(output))
