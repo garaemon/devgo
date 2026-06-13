@@ -1706,3 +1706,80 @@ func TestHasBuild_WithLegacyDockerfile(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_Features(t *testing.T) {
+	fixturePath := filepath.Join("..", "..", "test", "fixtures", "features.json")
+
+	dc, err := Parse(fixturePath)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	if !dc.HasFeatures() {
+		t.Fatal("HasFeatures() = false, want true")
+	}
+
+	if len(dc.Features) != 3 {
+		t.Errorf("Features length = %d, want 3", len(dc.Features))
+	}
+
+	if len(dc.OverrideFeatureInstallOrder) != 1 {
+		t.Errorf("OverrideFeatureInstallOrder length = %d, want 1",
+			len(dc.OverrideFeatureInstallOrder))
+	}
+
+	specs := dc.GetFeatures()
+	if len(specs) != 3 {
+		t.Fatalf("GetFeatures() length = %d, want 3", len(specs))
+	}
+
+	// Specs are sorted by reference for reproducibility.
+	if specs[0].Ref != "ghcr.io/devcontainers/features/common-utils:2" {
+		t.Errorf("first spec ref = %q", specs[0].Ref)
+	}
+
+	// Object options are preserved.
+	var nodeSpec *FeatureSpec
+	for i := range specs {
+		if specs[i].Ref == "ghcr.io/devcontainers/features/node:1" {
+			nodeSpec = &specs[i]
+		}
+	}
+	if nodeSpec == nil {
+		t.Fatal("node feature spec not found")
+	}
+	if nodeSpec.Options["version"] != "20" {
+		t.Errorf("node version option = %v, want 20", nodeSpec.Options["version"])
+	}
+
+	// Bare-scalar options normalize to an empty map.
+	for i := range specs {
+		if specs[i].Ref == "ghcr.io/devcontainers/features/git:1" {
+			if len(specs[i].Options) != 0 {
+				t.Errorf("git options = %v, want empty", specs[i].Options)
+			}
+		}
+	}
+}
+
+func TestHasFeatures(t *testing.T) {
+	tests := []struct {
+		name     string
+		dc       DevContainer
+		expected bool
+	}{
+		{name: "no features", dc: DevContainer{}, expected: false},
+		{
+			name:     "with features",
+			dc:       DevContainer{Features: map[string]interface{}{"ghcr.io/x/y:1": map[string]interface{}{}}},
+			expected: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.dc.HasFeatures(); got != tt.expected {
+				t.Errorf("HasFeatures() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
