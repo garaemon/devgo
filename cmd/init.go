@@ -139,6 +139,19 @@ func createDefaultTemplate() string {
   // Control command execution order
   // "waitFor": "updateContentCommand",
 
+  // Personal dotfiles (NOT a devcontainer.json key)
+  // Dotfiles are personal and must not be committed here. Configure them
+  // per-user in ~/.config/devgo/config.json instead, e.g.:
+  //   {
+  //     "dotfiles": {
+  //       "repository": "https://github.com/your-user/dotfiles",
+  //       "targetPath": "~/dotfiles",
+  //       "installCommand": "install.sh"
+  //     }
+  //   }
+  // Or override per run: devgo up --dotfiles-repository <url>
+  // See docs/dotfiles.md for details.
+
   // Features to install
   "features": {},
 
