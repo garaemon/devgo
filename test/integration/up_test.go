@@ -876,3 +876,71 @@ func getContainerUserGID(t *testing.T, containerName, username string) int {
 
 	return gid
 }
+
+// TestUpWithFeatureIntegration verifies that a devcontainer "feature" declared
+// in devcontainer.json is downloaded from its OCI registry and installed into
+// the image used to start the container.
+func TestUpWithFeatureIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration tests in short mode")
+	}
+	if !isDockerAvailable() {
+		t.Skip("Docker is not available, skipping integration test")
+	}
+
+	tempDir := t.TempDir()
+
+	// ubuntu:22.04 does not ship git; the git feature installs it, giving us a
+	// clear, deterministic signal that the feature install.sh ran.
+	content := `{
+  "image": "ubuntu:22.04",
+  "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  }
+}`
+	setupDevcontainerWithContent(t, tempDir, content)
+
+	devgoBinary := buildDevgoBinary(t)
+	defer os.Remove(devgoBinary)
+
+	containerName := buildExpectedContainerName(tempDir)
+	cleanupContainer(t, containerName)
+	defer cleanupContainer(t, containerName)
+	defer func() {
+		// Remove the generated feature image.
+		base := filepath.Base(tempDir)
+		image := fmt.Sprintf("devgo-%s-features:latest", base)
+		_ = exec.Command("docker", "rmi", "-f", image).Run()
+	}()
+
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current directory: %v", err)
+	}
+	defer os.Chdir(originalDir)
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("Failed to change to working directory: %v", err)
+	}
+
+	// Building the feature image (OCI pull + apt install) can take a while.
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, devgoBinary, "up")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("up command failed: %v. Output: %s", err, string(output))
+	}
+	t.Logf("Command output: %s", string(output))
+
+	if !isContainerRunning(t, containerName) {
+		t.Fatalf("Container %s is not running after up command", containerName)
+	}
+
+	// The git feature must have installed git into the container.
+	gitVersion := runCommandInContainer(t, containerName, []string{"git", "--version"})
+	if !strings.Contains(gitVersion, "git version") {
+		t.Errorf("expected git to be installed by feature, got: %q", gitVersion)
+	}
+}

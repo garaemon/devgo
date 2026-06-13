@@ -141,6 +141,20 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 		return fmt.Errorf("devcontainer must specify an image, build configuration, or docker compose configuration")
 	}
 
+	// Apply devcontainer features by building an image layered on top of the
+	// base image. The resulting image is used for container creation.
+	if devContainer.HasFeatures() {
+		devcontainerPath, err := findDevcontainerConfig(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to find devcontainer config: %w", err)
+		}
+		imageName, err = applyFeaturesIfNeeded(devContainer, workspaceDir, devcontainerPath, imageName)
+		if err != nil {
+			return err
+		}
+		devContainer.Image = imageName
+	}
+
 	// TODO: Add support for --container-name option similar to devcontainer-cli runArgs
 	// The official devcontainer-cli doesn't have a direct --name option for the up command,
 	// but supports container naming through runArgs in devcontainer.json.
