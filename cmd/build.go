@@ -28,7 +28,7 @@ func runBuildCommand(args []string) error {
 		return fmt.Errorf("failed to parse devcontainer.json: %w", err)
 	}
 
-	if !devContainer.HasBuild() {
+	if !devContainer.HasBuild() && !devContainer.HasFeatures() {
 		return fmt.Errorf("devcontainer.json does not have build configuration")
 	}
 
@@ -36,10 +36,19 @@ func runBuildCommand(args []string) error {
 }
 
 func buildDevContainer(devContainer *devcontainer.DevContainer, workspaceDir, devcontainerPath string) error {
+	imageTag := determineImageTag(devContainer, workspaceDir)
+
+	// An image-only config with features has nothing to build directly; the
+	// feature image is layered on top of the referenced base image below.
+	if !devContainer.HasBuild() {
+		if !devContainer.HasFeatures() {
+			return fmt.Errorf("devcontainer.json does not have build configuration")
+		}
+		return applyAndMaybePushFeatures(devContainer, workspaceDir, devcontainerPath, devContainer.Image)
+	}
+
 	dockerfilePath := determineDockerfilePath(devContainer, devcontainerPath)
 	buildContext := determineBuildContext(devContainer, workspaceDir, devcontainerPath)
-
-	imageTag := determineImageTag(devContainer, workspaceDir)
 
 	debugf("Building image: %s\n", imageTag)
 	debugf("Dockerfile: %s\n", dockerfilePath)
@@ -85,8 +94,22 @@ func buildDevContainer(devContainer *devcontainer.DevContainer, workspaceDir, de
 
 	debugf("Successfully built image: %s\n", imageTag)
 
+	return applyAndMaybePushFeatures(devContainer, workspaceDir, devcontainerPath, imageTag)
+}
+
+// applyAndMaybePushFeatures layers any declared features on top of baseImage and
+// pushes the resulting image when the --push flag is set.
+func applyAndMaybePushFeatures(
+	devContainer *devcontainer.DevContainer,
+	workspaceDir, devcontainerPath, baseImage string,
+) error {
+	finalImage, err := applyFeaturesIfNeeded(devContainer, workspaceDir, devcontainerPath, baseImage)
+	if err != nil {
+		return err
+	}
+
 	if push {
-		return pushImage(imageTag)
+		return pushImage(finalImage)
 	}
 
 	return nil

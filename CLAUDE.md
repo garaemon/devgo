@@ -115,7 +115,24 @@ make help
 - ✅ Full devcontainer.json specification compliance
 - ✅ Container workspace mounting and environment setup
 - ✅ initializeCommand support (host execution)
+- ✅ devcontainer Features support (OCI registry, build-time install)
 - ✅ Comprehensive error handling and logging
+
+#### devcontainer Features
+`features` declared in devcontainer.json are pulled from their OCI registry
+(e.g. `ghcr.io/devcontainers/features/node:1`) and installed at build time by
+generating a wrapper Dockerfile that layers each feature's `install.sh` on top
+of the base image. Implemented in `pkg/features/` and wired into the `up` and
+`build` commands via `cmd/features.go`.
+
+Current scope (MVP):
+- Source: OCI registry only (no local path or HTTPS tarball references).
+- Metadata honored: feature `options` (passed to install.sh as uppercased env
+  vars, per the spec rule) and `containerEnv` (merged into the final image).
+- Not yet honored: install ordering (`installsAfter`,
+  `overrideFeatureInstallOrder` — parsed but ignored; features install in sorted
+  reference order), and `mounts`/`capAdd`/`privileged`/`entrypoint`/`remoteUser`.
+- Not applied to docker-compose configurations (a warning is emitted).
 
 ### Testing Infrastructure (Complete)
 - ✅ Comprehensive integration tests with actual Docker

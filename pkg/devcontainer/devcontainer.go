@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 
 	"github.com/titanous/json5"
 )
@@ -61,6 +62,20 @@ type DevContainer struct {
 	PostStartCommand     interface{}               `json:"postStartCommand,omitempty"`
 	PostAttachCommand    interface{}               `json:"postAttachCommand,omitempty"`
 	WaitFor              string                    `json:"waitFor,omitempty"`
+	// Features maps a feature reference (e.g. "ghcr.io/devcontainers/features/node:1")
+	// to its options. The options value may be an object, a bare scalar, or empty.
+	Features map[string]interface{} `json:"features,omitempty"`
+	// OverrideFeatureInstallOrder is parsed but currently ignored (install order is
+	// derived from the sorted feature references).
+	OverrideFeatureInstallOrder []string `json:"overrideFeatureInstallOrder,omitempty"`
+}
+
+// FeatureSpec is a single feature declaration resolved from the features map.
+type FeatureSpec struct {
+	// Ref is the OCI reference of the feature.
+	Ref string
+	// Options holds the user-provided options for the feature.
+	Options map[string]interface{}
 }
 
 func Parse(filePath string) (*DevContainer, error) {
@@ -254,6 +269,46 @@ func (dc *DevContainer) ShouldWaitForCommand(commandType string) bool {
 	default:
 		return false
 	}
+}
+
+// HasFeatures reports whether any devcontainer features are declared.
+func (dc *DevContainer) HasFeatures() bool {
+	return len(dc.Features) > 0
+}
+
+// GetFeatures returns the declared features as a slice of FeatureSpec.
+// Because Go maps are unordered, the features are returned sorted by reference
+// for reproducible install order (MVP: overrideFeatureInstallOrder and
+// installsAfter are not yet honored).
+func (dc *DevContainer) GetFeatures() []FeatureSpec {
+	if len(dc.Features) == 0 {
+		return nil
+	}
+
+	refs := make([]string, 0, len(dc.Features))
+	for ref := range dc.Features {
+		refs = append(refs, ref)
+	}
+	sort.Strings(refs)
+
+	specs := make([]FeatureSpec, 0, len(refs))
+	for _, ref := range refs {
+		specs = append(specs, FeatureSpec{
+			Ref:     ref,
+			Options: normalizeFeatureOptions(dc.Features[ref]),
+		})
+	}
+	return specs
+}
+
+// normalizeFeatureOptions converts the raw options value into a map.
+// Object values are returned as-is; any other form (bare scalar, bool, or
+// empty) yields an empty map so that feature defaults apply.
+func normalizeFeatureOptions(raw interface{}) map[string]interface{} {
+	if m, ok := raw.(map[string]interface{}); ok {
+		return m
+	}
+	return map[string]interface{}{}
 }
 
 func (dc *DevContainer) HasDockerCompose() bool {
