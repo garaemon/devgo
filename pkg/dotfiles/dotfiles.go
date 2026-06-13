@@ -243,19 +243,22 @@ func cloneRepo(ctx context.Context, exec Executor, user, repo, target string) er
 
 func resolveInstallScript(ctx context.Context, exec Executor, user, targetPath, explicit string) (string, error) {
 	if explicit != "" {
-		// When the user pinned a script name, surface a clear "missing"
-		// error rather than letting the eventual `sh -c './script'` fail
-		// with exit 127 mixed into other install error paths.
-		probe := explicit
+		// installCommand may carry arguments (e.g. "install.sh --tool"), so
+		// only the first token is the script path; the rest are passed
+		// through to the script verbatim. Probe just the script's existence
+		// to surface a clear "missing" error rather than letting the eventual
+		// `sh -c './script ...'` fail with exit 127 mixed into other paths.
+		scriptName := firstToken(explicit)
+		probe := scriptName
 		if !strings.HasPrefix(probe, "/") {
-			probe = path.Join(targetPath, strings.TrimPrefix(explicit, "./"))
+			probe = path.Join(targetPath, strings.TrimPrefix(scriptName, "./"))
 		}
 		exists, err := pathExists(ctx, exec, user, probe)
 		if err != nil {
 			return "", err
 		}
 		if !exists {
-			return "", fmt.Errorf("configured installCommand %q does not exist in dotfiles repo at %s", explicit, targetPath)
+			return "", fmt.Errorf("configured installCommand %q does not exist in dotfiles repo at %s", scriptName, targetPath)
 		}
 		return explicit, nil
 	}
@@ -272,16 +275,19 @@ func resolveInstallScript(ctx context.Context, exec Executor, user, targetPath, 
 	return "", nil
 }
 
-func runInstallScript(ctx context.Context, exec Executor, user, targetPath, script string) error {
-	invocation := script
-	if !strings.HasPrefix(script, "/") && !strings.HasPrefix(script, "./") {
-		invocation = "./" + script
+func runInstallScript(ctx context.Context, exec Executor, user, targetPath, command string) error {
+	// command is the resolved installCommand, which may include arguments
+	// (e.g. "install.sh --tool"). It is run as a shell command line so the
+	// arguments reach the script. Only the first token (the script path) is
+	// adjusted with a leading "./" when it is a bare relative name. The line
+	// is intentionally NOT shell-quoted: dotfiles repos are trusted, and
+	// quoting the whole string would collapse arguments into one filename.
+	scriptName := firstToken(command)
+	invocation := command
+	if !strings.HasPrefix(scriptName, "/") && !strings.HasPrefix(scriptName, "./") {
+		invocation = "./" + command
 	}
-	// Quote the script path so a value like "install.sh; rm -rf ~" is treated
-	// as a single filename argument rather than a shell command sequence.
-	// Anything more elaborate (shell pipelines, args) belongs inside the
-	// dotfiles repo's own install script.
-	cmd := []string{"sh", "-c", fmt.Sprintf("cd %s && %s", shellQuote(targetPath), shellQuote(invocation))}
+	cmd := []string{"sh", "-c", fmt.Sprintf("cd %s && %s", shellQuote(targetPath), invocation)}
 	stdout, stderr, exitCode, err := exec.Exec(ctx, user, cmd)
 	if err != nil {
 		return err
@@ -306,6 +312,17 @@ func runInstallScript(ctx context.Context, exec Executor, user, targetPath, scri
 // password (if present) is also stripped along with the username.
 func SanitizeRepoURL(repo string) string {
 	return credentialURLPattern.ReplaceAllString(repo, "${1}***@")
+}
+
+// firstToken returns the first whitespace-separated field of s, which for an
+// installCommand is the script path (the remainder being its arguments). It
+// returns the empty string when s is blank or whitespace-only.
+func firstToken(s string) string {
+	fields := strings.Fields(s)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
 }
 
 // shellQuote wraps a value in single quotes for safe inclusion in `sh -c`.
