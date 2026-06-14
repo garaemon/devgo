@@ -221,7 +221,8 @@ Flags:
   --dotfiles-target-path string
         Path inside the container where the dotfiles repo is cloned (default "~/dotfiles")
   --dotfiles-install-command string
-        Install script to run after cloning (relative to target path)
+        Install command to run after cloning; first token is the script path
+        (relative to target path), remaining tokens are passed as arguments
   --no-dotfiles
         Disable dotfiles processing for this invocation
   --force-dotfiles

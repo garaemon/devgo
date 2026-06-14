@@ -41,7 +41,7 @@ automatically when `devgo up` runs.
 |-----|----------|---------|-------------|
 | `repository` | yes | — | Git URL of the dotfiles repository. Any URL `git clone` accepts (https, ssh, git protocol). |
 | `targetPath` | no | `~/dotfiles` | Directory inside the container where the repository is cloned. A leading `~` or `~/` is expanded to the target user's `$HOME` (resolved inside the container). The target should not be the home directory itself, since `git clone` refuses to write into a non-empty directory. |
-| `installCommand` | no | (auto) | Path of the install script to execute after cloning, relative to `targetPath`. When empty, devgo searches for a known script (see below). |
+| `installCommand` | no | (auto) | Install command to execute after cloning. The first token is the script path (relative to `targetPath`); any remaining tokens are passed to the script as arguments, e.g. `install.sh --tool`. When empty, devgo searches for a known script (see below). |
 
 ### Auto-detected install script
 
@@ -92,9 +92,12 @@ The CLI flags take precedence over `~/.config/devgo/config.json`.
   has the right keys loaded.
 * If `targetPath` already exists, devgo **skips both clone and install** to
   avoid trampling over user changes. Use `--force-dotfiles` to override.
-* The install script runs as a single `sh -c "cd <targetPath> && <script>"`.
-  Both the `cd` and the script execute inside the same shell, so any
-  environment variables exported by the script affect only that shell.
+* The install command runs as a single `sh -c "cd <targetPath> && <installCommand>"`.
+  Both the `cd` and the command execute inside the same shell, so any
+  environment variables exported by the script affect only that shell. The
+  command is not shell-quoted, so arguments in `installCommand` (and other
+  shell syntax) are honored. Because dotfiles repositories are trusted, this
+  is intentional; do not point `installCommand` at untrusted content.
 * The install script must be **executable** (`chmod +x install.sh`) and have
   a shebang the container can resolve. Non-zero exit codes 126 (not
   executable) and 127 (interpreter missing) trigger an explicit hint in the
