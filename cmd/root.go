@@ -240,7 +240,7 @@ Examples:
 }
 
 func showVersionInfo() {
-	fmt.Println("devgo version 0.2.0")
+	fmt.Println("devgo version 0.3.0")
 }
 
 func runDevContainer(args []string) error {
