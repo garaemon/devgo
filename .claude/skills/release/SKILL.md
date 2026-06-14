@@ -21,16 +21,22 @@ This skill is devgo-specific. The single source of truth for the version is the 
 printed by `showVersionInfo()` in `cmd/root.go` (e.g. `devgo version 0.3.0`). Releases
 are tagged `vX.Y.Z` and published with `gh release`.
 
+A release is outward-facing and effectively irreversible once tagged, so the workflow has
+two checkpoints where the user must approve before continuing: after the version is chosen
+(Step 3) and before the PR is merged (Step 7). Do not skip them.
+
 ## Workflow Overview
 
 1. Gather release state (current version, last tag/release, unreleased commits)
 2. Decide the next semantic version
-3. Create a dated branch and bump the version in `cmd/root.go`
-4. Run tests and the linter
-5. Commit, push, and open a "Bump version" PR
-6. Wait for CI, then squash-merge and sync local `main`
-7. Tag the merge commit `vX.Y.Z` and push the tag
-8. Publish the GitHub Release with the standard notes
+3. **Confirm the version number and the change list with the user — wait for approval**
+4. Create a dated branch and bump the version in `cmd/root.go`
+5. Run tests and the linter
+6. Commit, push, and open a "Bump version" PR
+7. Wait for CI, then **ask the user before merging — never merge on your own**
+8. After approval, squash-merge and sync local `main`
+9. Tag the merge commit `vX.Y.Z` and push the tag
+10. Publish the GitHub Release with the standard notes
 
 ## Step 1: Gather Release State
 
@@ -52,11 +58,23 @@ Apply semantic versioning to the unreleased commits. The project is pre-1.0, so:
 - Only bug fixes / internal changes → patch bump (e.g. `0.3.0` → `0.3.1`)
 - A breaking change → still a minor bump while pre-1.0, but call it out explicitly
 
-If the changes are ambiguous (a mix that could read as either), state the chosen version
-and the one-line reason rather than asking — the user can correct it. Pick the version
-that best reflects the most significant change in the set.
+Pick the version that best reflects the most significant change in the set.
 
-## Step 3: Branch and Bump
+## Step 3: Confirm With the User
+
+Before changing anything, present the release plan and wait for the user's explicit
+go-ahead. This is a required checkpoint: the version number is the user's call, and they
+may know context (a change to hold back, a different bump level) that the commit list
+doesn't show. Show them:
+
+- The proposed version and the bump level with its one-line reason
+  (e.g. "0.2.0 → 0.3.0, minor: ships a new feature")
+- The list of changes the release will ship (the commits/PRs since the last tag)
+
+If the user adjusts the version or the change list, apply their input and confirm again.
+Only move on to the branch and bump once they have approved.
+
+## Step 4: Branch and Bump
 
 Make a branch before editing (the repo's convention is a `YYYY.MM.DD-` prefix; use
 today's date):
@@ -76,7 +94,7 @@ func showVersionInfo() {
 No other file holds the version (no CHANGELOG, no Makefile version). Confirm with a quick
 `grep -rn "OLD.VERSION"` that nothing else references the old number.
 
-## Step 4: Verify
+## Step 5: Verify
 
 Run the same gates CI enforces, since a release should never ship red:
 
@@ -88,7 +106,7 @@ make lint
 Both must pass. The version line is not covered by a unit test, so no test edits are
 needed — but if a future version string ever becomes test-asserted, update that test too.
 
-## Step 5: Commit and Open the PR
+## Step 6: Commit and Open the PR
 
 Stage only the changed file (never `git add .`):
 
@@ -118,7 +136,7 @@ EOF
 )"
 ```
 
-## Step 6: Merge and Sync
+## Step 7: Wait for CI, Then Get Approval to Merge
 
 Wait for CI to finish:
 
@@ -130,7 +148,12 @@ gh pr checks <PR#> --watch
 covered code, so the patch has 0% coverage. This is not a blocker; every prior release PR
 hit the same thing. All other checks (test, integration, lint, codecov/project) must pass.
 
-Squash-merge and clean up, then fast-forward local `main`:
+Do not merge on your own. Report the CI result to the user and wait for their explicit
+approval — merging is the point of no return for a release. This is a required checkpoint.
+
+## Step 8: Merge and Sync
+
+Once the user approves, squash-merge, clean up, and fast-forward local `main`:
 
 ```bash
 gh pr merge <PR#> --squash --delete-branch
@@ -139,7 +162,7 @@ git checkout main && git pull --ff-only
 
 After this, `git log --oneline -1` should show `Bump version to X.Y.Z (#PR#)`.
 
-## Step 7: Tag the Release
+## Step 9: Tag the Release
 
 Tag the squash-merge commit (the bump commit) and push the tag:
 
@@ -148,7 +171,7 @@ git tag -a vX.Y.Z -m "Release vX.Y.Z" <mergeCommitSha>
 git push origin vX.Y.Z
 ```
 
-## Step 8: Publish the GitHub Release
+## Step 10: Publish the GitHub Release
 
 Match the existing release-note format exactly (a `What's Changed` bullet list plus a
 Full Changelog compare link). Reference each shipped change by its PR number:
