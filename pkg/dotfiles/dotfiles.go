@@ -282,10 +282,14 @@ func runInstallScript(ctx context.Context, exec Executor, user, targetPath, comm
 	// adjusted with a leading "./" when it is a bare relative name. The line
 	// is intentionally NOT shell-quoted: dotfiles repos are trusted, and
 	// quoting the whole string would collapse arguments into one filename.
-	scriptName := firstToken(command)
-	invocation := command
+	// Trim surrounding whitespace before prepending "./" so a value like
+	// "  install.sh --tool" does not become "./  install.sh --tool" (the "./"
+	// must attach directly to the script name). Internal spacing between
+	// arguments is preserved.
+	invocation := strings.TrimSpace(command)
+	scriptName := firstToken(invocation)
 	if !strings.HasPrefix(scriptName, "/") && !strings.HasPrefix(scriptName, "./") {
-		invocation = "./" + command
+		invocation = "./" + invocation
 	}
 	cmd := []string{"sh", "-c", fmt.Sprintf("cd %s && %s", shellQuote(targetPath), invocation)}
 	stdout, stderr, exitCode, err := exec.Exec(ctx, user, cmd)

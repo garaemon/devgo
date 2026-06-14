@@ -239,6 +239,33 @@ func TestApply_RunsExplicitInstallCommandWithArgs(t *testing.T) {
 	}
 }
 
+func TestApply_RunsExplicitInstallCommandWithLeadingWhitespace(t *testing.T) {
+	exec := &fakeExec{
+		rules: []fakeRule{
+			{contains: `printf %s "$HOME"`, stdout: "/home/u"},
+			{contains: "[ -e '/home/u/df/install.sh'", exitCode: 0},
+			{contains: "[ -e", exitCode: 1},
+		},
+	}
+	cfg := &Config{
+		Repository:     "https://example.com/x",
+		TargetPath:     "~/df",
+		InstallCommand: "  install.sh --tool",
+	}
+	if err := Apply(context.Background(), exec, "u", cfg, false, nil); err != nil {
+		t.Fatalf("Apply error = %v", err)
+	}
+	if exec.commandsContaining("./install.sh --tool") != 1 {
+		t.Errorf("expected leading whitespace to be trimmed before ./ prefix, got calls=%v", exec.calls)
+	}
+	for _, c := range exec.calls {
+		joined := strings.Join(c.cmd, " ")
+		if strings.Contains(joined, "./  install.sh") {
+			t.Errorf("leading whitespace must not separate ./ from the script name: %v", c.cmd)
+		}
+	}
+}
+
 func TestApply_FailsWhenExplicitInstallCommandWithArgsScriptMissing(t *testing.T) {
 	exec := &fakeExec{
 		rules: []fakeRule{
@@ -257,6 +284,9 @@ func TestApply_FailsWhenExplicitInstallCommandWithArgsScriptMissing(t *testing.T
 	}
 	if !strings.Contains(err.Error(), "missing.sh") {
 		t.Errorf("error %q should mention the missing script name", err.Error())
+	}
+	if exec.commandsContaining("./missing.sh") != 0 {
+		t.Errorf("install command must not run when the script is missing (probe before run), got calls=%v", exec.calls)
 	}
 }
 
