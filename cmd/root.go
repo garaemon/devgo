@@ -298,6 +298,9 @@ func resolveProfileConfig(name string) (string, error) {
 }
 
 func profileNotFoundError(name string) error {
+	// This helper only builds a friendly error message, so any failure to
+	// enumerate profiles is intentionally ignored: an empty list simply yields
+	// the "no profiles exist yet" guidance, which is an acceptable fallback.
 	available, _ := config.ListProfiles()
 	if len(available) == 0 {
 		dir, _ := config.ProfilesDir()

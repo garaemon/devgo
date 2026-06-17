@@ -235,6 +235,34 @@ func TestProfilePath_DefaultsToHome(t *testing.T) {
 	}
 }
 
+func TestProfilePath_RejectsInvalidNames(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	invalidNames := []string{
+		"",
+		".",
+		"..",
+		"../escape",
+		"foo/bar",
+		"/absolute",
+	}
+	for _, name := range invalidNames {
+		if _, err := ProfilePath(name); err == nil {
+			t.Errorf("ProfilePath(%q) expected error, got nil", name)
+		}
+	}
+}
+
+func TestValidateProfileName_AcceptsSimpleNames(t *testing.T) {
+	validNames := []string{"go", "rust", "my-profile", "profile_1", "v1.2"}
+	for _, name := range validNames {
+		if err := ValidateProfileName(name); err != nil {
+			t.Errorf("ValidateProfileName(%q) unexpected error: %v", name, err)
+		}
+	}
+}
+
 func TestListProfiles_MissingDirIsEmpty(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)

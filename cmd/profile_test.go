@@ -116,6 +116,57 @@ func TestFindDevcontainerConfig_MissingProfileError(t *testing.T) {
 	}
 }
 
+func TestRunInitProfile_ReplacesNameWithProfileName(t *testing.T) {
+	resetProfileGlobals(t)
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	if err := runInitProfile("go"); err != nil {
+		t.Fatalf("runInitProfile() error = %v", err)
+	}
+
+	generated := filepath.Join(tmp, "devgo", "profiles", "go", "devcontainer.json")
+	content, err := os.ReadFile(generated)
+	if err != nil {
+		t.Fatalf("failed to read generated profile: %v", err)
+	}
+
+	if !strings.Contains(string(content), `"name": "go"`) {
+		t.Errorf("generated profile should set name to %q, got:\n%s", "go", content)
+	}
+	if strings.Contains(string(content), `"name": "development-container"`) {
+		t.Errorf("generated profile still contains default name, got:\n%s", content)
+	}
+}
+
+func TestRunInitProfile_ErrorsWhenProfileExists(t *testing.T) {
+	resetProfileGlobals(t)
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	if err := runInitProfile("go"); err != nil {
+		t.Fatalf("first runInitProfile() error = %v", err)
+	}
+
+	err := runInitProfile("go")
+	if err == nil {
+		t.Fatalf("expected error when profile already exists, got nil")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("error should mention 'already exists', got: %v", err)
+	}
+}
+
+func TestRunInitProfile_RejectsTraversalName(t *testing.T) {
+	resetProfileGlobals(t)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	err := runInitProfile("../escape")
+	if err == nil {
+		t.Fatalf("expected error for traversal profile name, got nil")
+	}
+}
+
 func TestDetermineWorkspaceFolder_ProfileUsesCwd(t *testing.T) {
 	resetProfileGlobals(t)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

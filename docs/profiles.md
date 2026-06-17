@@ -71,10 +71,31 @@ already behave.
 |------|----------------|
 | Local (repo `devcontainer.json`) | `<name>-<session>-<hash(workspace)>` |
 | Profile | `<profile>-<name>-<session>-<hash(workspace)>` |
+| Local + docker compose | `<hash(workspace)>-<dir>-<service>-1` |
+| Profile + docker compose | `<hash(workspace)>-<profile>-<dir>-<service>-1` |
+
+When the profile uses docker compose, the naming follows the compose project
+convention instead of the rows above: `<dir>` is the workspace directory's base
+name and `<service>` is the compose service.
 
 `<name>` is the `name` field from the profile's `devcontainer.json` (the
 scaffolded template sets it to the profile name), falling back to the workspace
-directory's base name.
+directory's base name. The `<profile>` and `<name>` segments are sanitized for
+Docker (characters outside `[a-zA-Z0-9_.-]` become `_`), so the container name
+may differ slightly from what you typed.
+
+A profile name must be a single path component: it cannot contain `/`, the
+segments `.` or `..`, or be an absolute path. This applies to both the
+`--profile` flag and the `DEVGO_PROFILE` environment variable.
+
+## Build context
+
+When a profile's `devcontainer.json` declares `dockerFile` or `build.context`,
+those paths are resolved relative to the **profile directory**
+(`~/.config/devgo/profiles/<name>/`), not the workspace you run from. A profile
+can therefore ship its own Dockerfile and build assets alongside its
+`devcontainer.json`. Only the workspace bind-mount points at your current
+directory; the build inputs always come from the profile.
 
 ## Errors
 

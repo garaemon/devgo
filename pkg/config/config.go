@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type Config struct {
@@ -108,9 +109,35 @@ func ProfilesDir() (string, error) {
 	return filepath.Join(base, "profiles"), nil
 }
 
+// ValidateProfileName reports whether name is usable as a single profile
+// directory component. A profile name may come from an untrusted source (the
+// --profile flag or the DEVGO_PROFILE environment variable) and is joined into
+// a filesystem path, so it must not contain path separators, traversal
+// segments, or be absolute; otherwise it could escape the profiles directory.
+func ValidateProfileName(name string) error {
+	if name == "" {
+		return fmt.Errorf("profile name must not be empty")
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("invalid profile name %q", name)
+	}
+	if filepath.IsAbs(name) ||
+		strings.ContainsRune(name, '/') ||
+		strings.ContainsRune(name, os.PathSeparator) {
+		return fmt.Errorf("profile name %q must be a single path component", name)
+	}
+	return nil
+}
+
 // ProfilePath returns the path to the devcontainer.json for the named global
-// profile. It does not check whether the file exists.
+// profile. The name must be a single path component (see ValidateProfileName);
+// path separators and traversal segments are rejected so the result always
+// stays inside the profiles directory. It does not check whether the file
+// exists.
 func ProfilePath(name string) (string, error) {
+	if err := ValidateProfileName(name); err != nil {
+		return "", err
+	}
 	dir, err := ProfilesDir()
 	if err != nil {
 		return "", err

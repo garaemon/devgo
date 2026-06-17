@@ -13,6 +13,12 @@ import (
 func runInitCommand(args []string) error {
 	// When --profile is given, scaffold a reusable global profile under the
 	// home directory instead of a repo-local .devcontainer.
+	//
+	// Unlike the runtime commands (up/shell/exec/...), init intentionally reads
+	// the flag variable directly instead of resolveProfileName(). Scaffolding is
+	// an explicit, one-off action, so an ambient DEVGO_PROFILE must not silently
+	// redirect a plain `devgo init` away from creating the expected local
+	// .devcontainer.
 	if profileName != "" {
 		return runInitProfile(profileName)
 	}
@@ -68,6 +74,10 @@ func runInitProfile(name string) error {
 		return fmt.Errorf("profile %q already exists at %s", name, devcontainerPath)
 	}
 
+	// Keep the literal below in sync with the "name" line in
+	// createDefaultTemplate(). If that line changes, this replacement silently
+	// matches nothing and the profile keeps the default name; the regression
+	// test in profile_test.go guards against that drift.
 	template := strings.Replace(
 		createDefaultTemplate(),
 		`"name": "development-container"`,

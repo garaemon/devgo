@@ -354,6 +354,31 @@ func TestDetermineContainerName_Profile(t *testing.T) {
 	}
 }
 
+func TestDetermineContainerName_ProfileWithCompose(t *testing.T) {
+	originalProfile := profileName
+	originalContainerName := containerName
+	defer func() {
+		profileName = originalProfile
+		containerName = originalContainerName
+	}()
+	containerName = ""
+	t.Setenv("DEVGO_PROFILE", "")
+
+	workspaceDir := "/path/to/myproj"
+	hash := GeneratePathHash(workspaceDir)
+
+	profileName = "go"
+	devContainer := &devcontainer.DevContainer{
+		DockerComposeFile: "docker-compose.yml",
+		Service:           "app",
+	}
+	result := determineContainerName(devContainer, workspaceDir)
+	expected := fmt.Sprintf("%s-go-myproj-app-1", hash)
+	if result != expected {
+		t.Errorf("expected %s but got %s", expected, result)
+	}
+}
+
 // mockDockerAPIClient implements the dockerAPIClient interface for testing
 type mockDockerAPIClient struct {
 	containers     []container.Summary
