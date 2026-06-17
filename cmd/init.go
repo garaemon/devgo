@@ -6,9 +6,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/garaemon/devgo/pkg/config"
 )
 
 func runInitCommand(args []string) error {
+	// When --profile is given, scaffold a reusable global profile under the
+	// home directory instead of a repo-local .devcontainer.
+	if profileName != "" {
+		return runInitProfile(profileName)
+	}
+
 	// Determine target directory
 	targetDir, err := determineInitDirectory(args)
 	if err != nil {
@@ -38,6 +46,41 @@ func runInitCommand(args []string) error {
 	}
 
 	fmt.Printf("Created devcontainer.json at %s\n", devcontainerPath)
+	return nil
+}
+
+// runInitProfile scaffolds a global container profile at
+// ~/.config/devgo/profiles/<name>/devcontainer.json. The generated template
+// uses the profile name as the devcontainer name so resulting containers are
+// easy to identify.
+func runInitProfile(name string) error {
+	devcontainerPath, err := config.ProfilePath(name)
+	if err != nil {
+		return fmt.Errorf("failed to determine profile path: %w", err)
+	}
+
+	profileDir := filepath.Dir(devcontainerPath)
+	if err := os.MkdirAll(profileDir, 0755); err != nil {
+		return fmt.Errorf("failed to create profile directory: %w", err)
+	}
+
+	if _, err := os.Stat(devcontainerPath); err == nil {
+		return fmt.Errorf("profile %q already exists at %s", name, devcontainerPath)
+	}
+
+	template := strings.Replace(
+		createDefaultTemplate(),
+		`"name": "development-container"`,
+		fmt.Sprintf(`"name": %q`, name),
+		1,
+	)
+
+	if err := os.WriteFile(devcontainerPath, []byte(template), 0644); err != nil {
+		return fmt.Errorf("failed to write profile devcontainer.json: %w", err)
+	}
+
+	fmt.Printf("Created profile %q at %s\n", name, devcontainerPath)
+	fmt.Printf("Use it from any directory with: devgo up --profile %s\n", name)
 	return nil
 }
 

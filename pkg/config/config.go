@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 type Config struct {
@@ -48,14 +49,11 @@ func Load() (*Config, error) {
 // UserConfigPath returns the path to the per-user devgo config file. It
 // honors XDG_CONFIG_HOME when set, and falls back to ~/.config/devgo/config.json.
 func UserConfigPath() (string, error) {
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "devgo", "config.json"), nil
-	}
-	home, err := os.UserHomeDir()
+	base, err := configBaseDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to determine user home directory: %w", err)
+		return "", err
 	}
-	return filepath.Join(home, ".config", "devgo", "config.json"), nil
+	return filepath.Join(base, "config.json"), nil
 }
 
 // LoadUserConfig loads the user-global config from the default location. A
@@ -84,6 +82,70 @@ func LoadUserConfigFile(path string) (*UserConfig, error) {
 		return nil, fmt.Errorf("failed to parse user config %s: %w", path, err)
 	}
 	return &cfg, nil
+}
+
+// configBaseDir returns the directory that holds devgo's per-user
+// configuration, honoring XDG_CONFIG_HOME and falling back to ~/.config/devgo.
+func configBaseDir() (string, error) {
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "devgo"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine user home directory: %w", err)
+	}
+	return filepath.Join(home, ".config", "devgo"), nil
+}
+
+// ProfilesDir returns the directory that holds named global container
+// profiles. Each profile is a subdirectory containing a devcontainer.json,
+// e.g. ~/.config/devgo/profiles/go/devcontainer.json.
+func ProfilesDir() (string, error) {
+	base, err := configBaseDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "profiles"), nil
+}
+
+// ProfilePath returns the path to the devcontainer.json for the named global
+// profile. It does not check whether the file exists.
+func ProfilePath(name string) (string, error) {
+	dir, err := ProfilesDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name, "devcontainer.json"), nil
+}
+
+// ListProfiles returns the names of available global profiles, sorted
+// alphabetically. A profile is a subdirectory of ProfilesDir that contains a
+// devcontainer.json. A missing profiles directory is not an error and yields
+// an empty slice.
+func ListProfiles() ([]string, error) {
+	dir, err := ProfilesDir()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read profiles directory %s: %w", dir, err)
+	}
+	var names []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		configFile := filepath.Join(dir, entry.Name(), "devcontainer.json")
+		if _, err := os.Stat(configFile); err == nil {
+			names = append(names, entry.Name())
+		}
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 func getEnv(key, defaultValue string) string {

@@ -8,15 +8,16 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/garaemon/devgo/pkg/config"
 	"github.com/garaemon/devgo/pkg/constants"
 	"github.com/garaemon/devgo/pkg/devcontainer"
-	// "github.com/garaemon/devgo/pkg/config"
 	// "github.com/garaemon/devgo/pkg/docker"
 )
 
 var (
 	workspaceFolder        string
 	configPath             string
+	profileName            string
 	forceBuild             bool
 	containerName          string
 	imageName              string
@@ -51,6 +52,9 @@ func parseAllFlags(args []string) ([]string, error) {
 			i++ // skip the next argument as it's the value
 		} else if arg == "--config" && i+1 < len(args) {
 			configPath = args[i+1]
+			i++ // skip the next argument as it's the value
+		} else if arg == "--profile" && i+1 < len(args) {
+			profileName = args[i+1]
 			i++ // skip the next argument as it's the value
 		} else if arg == "--name" && i+1 < len(args) {
 			containerName = args[i+1]
@@ -190,10 +194,16 @@ Commands:
   run-user-commands       Run user commands in container
   read-configuration      Output current workspace configuration
   init [directory]        Initialize devcontainer.json template
+                          (with --profile, scaffold a global profile instead)
 
 Flags:
   --config string
         Path to devcontainer.json file
+  --profile string
+        Use a named global profile from ~/.config/devgo/profiles/<name>/
+        instead of discovering a repo-local devcontainer.json. The current
+        directory is mounted as the workspace. Can also be set via the
+        DEVGO_PROFILE environment variable. --config takes precedence.
   --debug
         Print container lifecycle, dotfiles, and other progress messages
         to stderr. Without this flag devgo stays quiet on success.
@@ -236,6 +246,8 @@ Examples:
   devgo exec bash
   devgo shell
   devgo stop
+  devgo init --profile go        # create a reusable global profile
+  devgo up --profile go          # run it in any directory
 `)
 }
 
@@ -257,9 +269,54 @@ func runDevContainer(args []string) error {
 	return nil
 }
 
+// resolveProfileName returns the active global profile name. An explicit
+// --profile flag wins; otherwise the DEVGO_PROFILE environment variable is
+// used so a profile can be set once and reused across invocations. An empty
+// string means no profile is active (local discovery applies).
+func resolveProfileName() string {
+	if profileName != "" {
+		return profileName
+	}
+	return os.Getenv("DEVGO_PROFILE")
+}
+
+// resolveProfileConfig returns the devcontainer.json path for a named global
+// profile, or a helpful error listing available profiles if it is missing.
+func resolveProfileConfig(name string) (string, error) {
+	path, err := config.ProfilePath(name)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return "", profileNotFoundError(name)
+		}
+		return "", fmt.Errorf("failed to access profile %q: %w", name, err)
+	}
+	debugf("Using global profile %q at: %s\n", name, path)
+	return path, nil
+}
+
+func profileNotFoundError(name string) error {
+	available, _ := config.ListProfiles()
+	if len(available) == 0 {
+		dir, _ := config.ProfilesDir()
+		return fmt.Errorf(
+			"profile %q not found; no profiles exist yet. Create one with: "+
+				"devgo init --profile %s (profiles live under %s)",
+			name, name, dir)
+	}
+	return fmt.Errorf("profile %q not found; available profiles: %s",
+		name, strings.Join(available, ", "))
+}
+
 func findDevcontainerConfig(configPath string) (string, error) {
 	if configPath != "" {
 		return configPath, nil
+	}
+
+	if name := resolveProfileName(); name != "" {
+		return resolveProfileConfig(name)
 	}
 
 	cwd, err := os.Getwd()
@@ -291,6 +348,14 @@ func determineWorkspaceFolder(devcontainerPath string) string {
 			return workspaceFolder
 		}
 		return absPath
+	}
+	// In profile mode the config lives under the home directory, so the
+	// workspace cannot be derived from its location. Default to the current
+	// directory the user invoked devgo from.
+	if resolveProfileName() != "" {
+		if cwd, err := os.Getwd(); err == nil {
+			return cwd
+		}
 	}
 	// Convert to absolute path first to handle relative paths correctly
 	absPath, err := filepath.Abs(devcontainerPath)
@@ -334,9 +399,14 @@ func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDi
 		session = constants.DefaultSessionName
 	}
 
+	profile := resolveProfileName()
+
 	// For docker compose, use service name with project prefix
 	if devContainer.HasDockerCompose() && devContainer.GetService() != "" {
 		projectName := sanitizeDockerName(filepath.Base(workspaceDir))
+		if profile != "" {
+			projectName = sanitizeDockerName(profile) + "-" + projectName
+		}
 		pathHash := GeneratePathHash(workspaceDir)
 		return fmt.Sprintf("%s-%s-%s-1", pathHash, projectName, devContainer.GetService())
 	}
@@ -347,6 +417,13 @@ func determineContainerName(devContainer *devcontainer.DevContainer, workspaceDi
 		baseName = sanitizeDockerName(devContainer.Name)
 	} else {
 		baseName = sanitizeDockerName(filepath.Base(workspaceDir))
+	}
+
+	// In profile mode, prefix the name with the profile so containers created
+	// from a global profile are easy to identify and never collide with a
+	// repo-local container in the same directory.
+	if profile != "" {
+		return fmt.Sprintf("%s-%s-%s-%s", sanitizeDockerName(profile), baseName, session, pathHash)
 	}
 
 	return fmt.Sprintf("%s-%s-%s", baseName, session, pathHash)

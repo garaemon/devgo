@@ -309,6 +309,51 @@ func TestDetermineContainerName(t *testing.T) {
 	}
 }
 
+func TestDetermineContainerName_Profile(t *testing.T) {
+	originalProfile := profileName
+	originalContainerName := containerName
+	defer func() {
+		profileName = originalProfile
+		containerName = originalContainerName
+	}()
+	containerName = ""
+	t.Setenv("DEVGO_PROFILE", "")
+
+	workspaceDir := "/path/to/myproj"
+	hash := GeneratePathHash(workspaceDir)
+
+	tests := []struct {
+		name             string
+		profile          string
+		devContainerName string
+		expected         string
+	}{
+		{
+			name:             "profile with default name from workspace",
+			profile:          "go",
+			devContainerName: "",
+			expected:         "go-myproj-default-" + hash,
+		},
+		{
+			name:             "profile with devcontainer name",
+			profile:          "rust",
+			devContainerName: "my-env",
+			expected:         "rust-my-env-default-" + hash,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			profileName = tt.profile
+			devContainer := &devcontainer.DevContainer{Name: tt.devContainerName}
+			result := determineContainerName(devContainer, workspaceDir)
+			if result != tt.expected {
+				t.Errorf("expected %s but got %s", tt.expected, result)
+			}
+		})
+	}
+}
+
 // mockDockerAPIClient implements the dockerAPIClient interface for testing
 type mockDockerAPIClient struct {
 	containers     []container.Summary
