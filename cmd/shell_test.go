@@ -144,7 +144,7 @@ func TestExecuteInteractiveShell(t *testing.T) {
 				inspectResponse:    tt.inspectResponse,
 			}
 
-			err := executeInteractiveShell(context.Background(), mockClient, tt.containerName, tt.devContainer, []string{"/bin/bash", "-i"})
+			err := executeInteractiveShell(context.Background(), mockClient, tt.containerName, tt.devContainer, []string{"/bin/bash", "-i"}, nil)
 
 			if tt.expectError {
 				if err == nil {
@@ -161,6 +161,357 @@ func TestExecuteInteractiveShell(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestResolveEnvVars(t *testing.T) {
+	t.Setenv("DEVGO_TEST_HOST_VAR", "from_host")
+
+	got := resolveEnvVars([]string{
+		"FOO=bar",
+		"EMPTY=",
+		"WITH=equals=sign",
+		"DEVGO_TEST_HOST_VAR",
+		"DEVGO_TEST_UNSET_VAR",
+		"",
+	})
+
+	want := map[string]string{
+		"FOO":                 "bar",
+		"EMPTY":               "",
+		"WITH":                "equals=sign",
+		"DEVGO_TEST_HOST_VAR": "from_host",
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("resolveEnvVars() = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("resolveEnvVars()[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+	if _, ok := got["DEVGO_TEST_UNSET_VAR"]; ok {
+		t.Errorf("unset host var should be skipped, but it was present")
+	}
+}
+
+func TestBuildShellEnv(t *testing.T) {
+	toMap := func(env []string) map[string]string {
+		m := make(map[string]string)
+		for _, e := range env {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) == 2 {
+				m[parts[0]] = parts[1]
+			}
+		}
+		return m
+	}
+
+	t.Run("defaults TERM when not provided", func(t *testing.T) {
+		got := toMap(buildShellEnv(nil, nil))
+		if got["TERM"] != "xterm-256color" {
+			t.Errorf("TERM = %q, want xterm-256color", got["TERM"])
+		}
+	})
+
+	t.Run("includes container env", func(t *testing.T) {
+		got := toMap(buildShellEnv(map[string]string{"PATH": "/usr/bin"}, nil))
+		if got["PATH"] != "/usr/bin" {
+			t.Errorf("PATH = %q, want /usr/bin", got["PATH"])
+		}
+	})
+
+	t.Run("user env overrides container env", func(t *testing.T) {
+		got := toMap(buildShellEnv(
+			map[string]string{"FOO": "container"},
+			[]string{"FOO=user", "BAR=baz"},
+		))
+		if got["FOO"] != "user" {
+			t.Errorf("FOO = %q, want user (override)", got["FOO"])
+		}
+		if got["BAR"] != "baz" {
+			t.Errorf("BAR = %q, want baz", got["BAR"])
+		}
+	})
+
+	t.Run("user env can override TERM", func(t *testing.T) {
+		got := toMap(buildShellEnv(nil, []string{"TERM=dumb"}))
+		if got["TERM"] != "dumb" {
+			t.Errorf("TERM = %q, want dumb", got["TERM"])
+		}
+	})
+}
+
+func TestShellCommand_PassesExtraEnv(t *testing.T) {
+	devContainer := &devcontainer.DevContainer{
+		ContainerUser:   "testuser",
+		WorkspaceFolder: "/workspace",
+	}
+	containers := []container.Summary{
+		{
+			ID:    "test123",
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				constants.DevgoManagedLabel: constants.DevgoManagedValue,
+			},
+		},
+	}
+	baseMockClient := &mockExecClient{
+		containers:         containers,
+		execCreateResponse: container.ExecCreateResponse{ID: "exec123"},
+		execAttachResponse: createMockHijackedResponse(),
+		inspectResponse: types.ContainerJSON{
+			Config: &container.Config{Env: []string{"PATH=/usr/bin"}},
+		},
+	}
+	mockClient := &mockShellExecClient{mockExecClient: baseMockClient}
+
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer,
+		[]string{"/bin/bash", "-i"}, []string{"FOO=bar"})
+
+	found := false
+	for _, e := range mockClient.capturedExecOptions.Env {
+		if e == "FOO=bar" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected FOO=bar in exec env, got %v", mockClient.capturedExecOptions.Env)
+	}
+}
+
+func TestResolveEnvVars_Wildcard(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "ASIAEXAMPLE")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
+	t.Setenv("AWS_SESSION_TOKEN", "token")
+	t.Setenv("NOT_AWS_VAR", "ignored")
+
+	got := resolveEnvVars([]string{"AWS_*"})
+
+	want := map[string]string{
+		"AWS_ACCESS_KEY_ID":     "ASIAEXAMPLE",
+		"AWS_SECRET_ACCESS_KEY": "secret",
+		"AWS_SESSION_TOKEN":     "token",
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("resolveEnvVars()[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+	if _, ok := got["NOT_AWS_VAR"]; ok {
+		t.Errorf("wildcard AWS_* should not match NOT_AWS_VAR")
+	}
+}
+
+func TestResolveEnvVars_MultilineExport(t *testing.T) {
+	// Simulates `--env "$(aws configure export-credentials --format env)"`,
+	// whose output is several `export KEY=VALUE` lines in one argument.
+	blob := "export AWS_ACCESS_KEY_ID=ASIAEXAMPLE\n" +
+		"export AWS_SECRET_ACCESS_KEY=secret\n" +
+		"export AWS_SESSION_TOKEN=token\n"
+
+	got := resolveEnvVars([]string{blob})
+
+	want := map[string]string{
+		"AWS_ACCESS_KEY_ID":     "ASIAEXAMPLE",
+		"AWS_SECRET_ACCESS_KEY": "secret",
+		"AWS_SESSION_TOKEN":     "token",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("resolveEnvVars() = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("resolveEnvVars()[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
+// TestResolveEnvVars_EdgeCases covers tricky parsing situations, especially
+// whitespace handling in values, which must be preserved exactly.
+func TestResolveEnvVars_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []string
+		wantKey string
+		wantVal string
+	}{
+		{
+			name:    "value with embedded spaces",
+			entries: []string{"GREETING=hello world"},
+			wantKey: "GREETING",
+			wantVal: "hello world",
+		},
+		{
+			name:    "value with trailing spaces is preserved",
+			entries: []string{"PADDED=value   "},
+			wantKey: "PADDED",
+			wantVal: "value   ",
+		},
+		{
+			name:    "value with leading spaces is preserved",
+			entries: []string{"PADDED=   value"},
+			wantKey: "PADDED",
+			wantVal: "   value",
+		},
+		{
+			name:    "value with tabs is preserved",
+			entries: []string{"TABBED=a\tb"},
+			wantKey: "TABBED",
+			wantVal: "a\tb",
+		},
+		{
+			name:    "value containing equals signs",
+			entries: []string{"QUERY=a=b=c"},
+			wantKey: "QUERY",
+			wantVal: "a=b=c",
+		},
+		{
+			name:    "empty value",
+			entries: []string{"EMPTY="},
+			wantKey: "EMPTY",
+			wantVal: "",
+		},
+		{
+			name:    "value of only spaces is preserved",
+			entries: []string{"SPACES=   "},
+			wantKey: "SPACES",
+			wantVal: "   ",
+		},
+		{
+			name:    "export prefix is stripped",
+			entries: []string{"export FOO=bar"},
+			wantKey: "FOO",
+			wantVal: "bar",
+		},
+		{
+			name:    "export prefix with extra spaces before key",
+			entries: []string{"export   FOO=bar"},
+			wantKey: "FOO",
+			wantVal: "bar",
+		},
+		{
+			name:    "leading indentation before key is trimmed",
+			entries: []string{"   FOO=bar"},
+			wantKey: "FOO",
+			wantVal: "bar",
+		},
+		{
+			name:    "key with surrounding spaces is trimmed",
+			entries: []string{"  FOO  =bar"},
+			wantKey: "FOO",
+			wantVal: "bar",
+		},
+		{
+			name:    "CRLF line ending strips the carriage return",
+			entries: []string{"FOO=bar\r"},
+			wantKey: "FOO",
+			wantVal: "bar",
+		},
+		{
+			name:    "value that itself looks like an export statement",
+			entries: []string{"CMD=export FOO=bar"},
+			wantKey: "CMD",
+			wantVal: "export FOO=bar",
+		},
+		{
+			name:    "later assignment wins",
+			entries: []string{"FOO=first", "FOO=second"},
+			wantKey: "FOO",
+			wantVal: "second",
+		},
+		{
+			name:    "later assignment within a multiline blob wins",
+			entries: []string{"FOO=first\nFOO=second"},
+			wantKey: "FOO",
+			wantVal: "second",
+		},
+		{
+			name:    "value with a literal newline-like backslash sequence is kept",
+			entries: []string{`FOO=a\nb`},
+			wantKey: "FOO",
+			wantVal: `a\nb`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveEnvVars(tt.entries)
+			if v, ok := got[tt.wantKey]; !ok {
+				t.Fatalf("resolveEnvVars() missing key %q (got %v)", tt.wantKey, got)
+			} else if v != tt.wantVal {
+				t.Errorf("resolveEnvVars()[%q] = %q, want %q", tt.wantKey, v, tt.wantVal)
+			}
+		})
+	}
+}
+
+// TestResolveEnvVars_Skips checks inputs that should not produce any variable.
+func TestResolveEnvVars_Skips(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []string
+	}{
+		{name: "empty string", entries: []string{""}},
+		{name: "whitespace only line", entries: []string{"   "}},
+		{name: "blank lines in a blob", entries: []string{"\n\n  \n"}},
+		{name: "bare export keyword", entries: []string{"export "}},
+		{name: "line with only equals and no key", entries: []string{"=novalue"}},
+		{name: "line with only spaces before equals", entries: []string{"   =x"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveEnvVars(tt.entries)
+			if len(got) != 0 {
+				t.Errorf("resolveEnvVars(%q) = %v, want empty", tt.entries, got)
+			}
+		})
+	}
+}
+
+// TestResolveEnvVars_BlobWithBlankAndExportLines mirrors the real AWS CLI
+// output, which can include blank lines and an expiration field.
+func TestResolveEnvVars_BlobWithBlankAndExportLines(t *testing.T) {
+	blob := "\n" +
+		"export AWS_ACCESS_KEY_ID=ASIAEXAMPLE\n" +
+		"\n" +
+		"export AWS_SECRET_ACCESS_KEY=secret/with+slashes\n" +
+		"export AWS_SESSION_TOKEN=token==\n" +
+		"export AWS_CREDENTIAL_EXPIRATION=2026-06-27T00:00:00+00:00\n"
+
+	got := resolveEnvVars([]string{blob})
+
+	want := map[string]string{
+		"AWS_ACCESS_KEY_ID":         "ASIAEXAMPLE",
+		"AWS_SECRET_ACCESS_KEY":     "secret/with+slashes",
+		"AWS_SESSION_TOKEN":         "token==",
+		"AWS_CREDENTIAL_EXPIRATION": "2026-06-27T00:00:00+00:00",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("resolveEnvVars() = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("resolveEnvVars()[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
+// TestBuildShellEnv_PreservesWhitespaceValue verifies a value with spaces
+// survives end-to-end into the exec env slice as a single entry.
+func TestBuildShellEnv_PreservesWhitespaceValue(t *testing.T) {
+	env := buildShellEnv(nil, []string{"MSG=hello world  "})
+
+	found := false
+	for _, e := range env {
+		if e == "MSG=hello world  " {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected %q in env, got %v", "MSG=hello world  ", env)
 	}
 }
 
@@ -242,7 +593,7 @@ func TestShellCommand_FallsBackToContainerUser(t *testing.T) {
 	}
 	mockClient := &mockShellExecClient{mockExecClient: baseMockClient}
 
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"}, nil)
 
 	if mockClient.capturedExecOptions.User != "node" {
 		t.Errorf("expected shell to fall back to containerUser %q, got %q", "node", mockClient.capturedExecOptions.User)
@@ -274,7 +625,7 @@ func TestShellCommand_PrefersRemoteUser(t *testing.T) {
 	}
 	mockClient := &mockShellExecClient{mockExecClient: baseMockClient}
 
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"}, nil)
 
 	if mockClient.capturedExecOptions.User != "vscode" {
 		t.Errorf("expected shell to run as remoteUser %q, got %q", "vscode", mockClient.capturedExecOptions.User)
@@ -305,7 +656,7 @@ func TestShellCommand_UsesResolvedShell(t *testing.T) {
 	}
 	mockClient := &mockShellExecClient{mockExecClient: baseMockClient}
 
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"zsh", "-i"})
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"zsh", "-i"}, nil)
 
 	got := mockClient.capturedExecOptions.Cmd
 	want := []string{"zsh", "-i"}
@@ -378,7 +729,7 @@ func TestShellCommandExecOptions(t *testing.T) {
 	}
 
 	// This will fail due to terminal handling, but we can still test the exec options
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"}, nil)
 
 	// Verify exec options are set correctly for shell command
 	capturedExecOptions := mockClient.capturedExecOptions
@@ -489,7 +840,7 @@ func TestShellRespectsBashrc(t *testing.T) {
 		mockExecClient: baseMockClient,
 	}
 
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"}, nil)
 
 	capturedExecOptions := mockClient.capturedExecOptions
 

@@ -218,6 +218,11 @@ Options:
   --workspace-folder PATH    Specify workspace directory
   --shell PROGRAM            Program to launch (default /bin/bash). Overrides the
                              "shell" setting in ~/.config/devgo/config.json.
+  --env, -e KEY=VALUE        Set an environment variable in the shell session.
+                             KEY=VALUE sets an explicit value, KEY inherits it
+                             from the host environment, and PREFIX* inherits
+                             every host variable starting with PREFIX.
+                             May be repeated.
 ```
 
 **Features:**
@@ -227,6 +232,44 @@ Options:
 - Sets appropriate working directory
 - Handles signal forwarding (Ctrl+C, etc.)
 - Custom detach keys to preserve readline functionality
+
+**Passing environment variables:**
+
+Use `--env`/`-e` to inject environment variables into the shell session. Three forms are supported:
+
+```bash
+# Set an explicit value
+devgo shell --env FOO=bar
+
+# Inherit a value from the host environment (KEY with no '=')
+devgo shell -e MY_TOKEN
+
+# Inherit every host variable matching a prefix (PREFIX*)
+devgo shell -e 'AWS_*'
+
+# Repeat the flag to pass several variables
+devgo shell -e FOO=bar -e BAZ=qux
+```
+
+Values you pass override variables already defined in the container (`containerEnv`).
+
+**AWS SSO profile:**
+
+When you authenticate to AWS with a named profile via SSO, the AWS CLI can export the resolved credentials as environment variables. A single `--env` value may contain several newline-separated assignments (a leading `export ` is ignored), so you can pass the command output directly:
+
+```bash
+aws sso login --profile my-sso-profile
+devgo shell --env "$(aws configure export-credentials --profile my-sso-profile --format env)"
+```
+
+`aws configure export-credentials` turns the cached SSO login into temporary `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` values, so the AWS CLI inside the container works without mounting `~/.aws`.
+
+Alternatively, export the credentials into your current shell and forward them all at once with the `AWS_*` wildcard, adding `-e AWS_REGION` if you need the region:
+
+```bash
+eval "$(aws configure export-credentials --profile my-sso-profile --format env)"
+devgo shell -e 'AWS_*' -e AWS_REGION
+```
 
 **Detach Keys:**
 
