@@ -76,23 +76,39 @@ func runShellCommand(args []string) error {
 //
 //	devgo shell --env "$(aws configure export-credentials --format env)"
 //
-// Each (line) is one of:
+// Each line is one of:
 //
 //	KEY=VALUE   set an explicit value
 //	KEY         inherit the value from the host environment (skipped if unset)
 //	PREFIX*     inherit every host variable whose name starts with PREFIX
+//
+// For the KEY=VALUE form the value is preserved exactly (including embedded and
+// trailing whitespace); only the key side is trimmed, since environment
+// variable names never contain whitespace. Later assignments to the same key
+// win.
 func resolveEnvVars(entries []string) map[string]string {
 	resolved := make(map[string]string)
 	for _, entry := range entries {
 		for _, line := range strings.Split(entry, "\n") {
-			// Tolerate a leading 'export ' so '--format env' output works as-is.
-			e := strings.TrimPrefix(strings.TrimSpace(line), "export ")
+			// Drop a trailing CR so CRLF input is handled, but otherwise keep
+			// the line intact so values retain their internal/trailing spaces.
+			line = strings.TrimSuffix(line, "\r")
+
+			if idx := strings.IndexByte(line, '='); idx >= 0 {
+				key := strings.TrimSpace(line[:idx])
+				key = strings.TrimSpace(strings.TrimPrefix(key, "export "))
+				if key != "" {
+					resolved[key] = line[idx+1:]
+				}
+				continue
+			}
+
+			// No '=': an inherit (KEY) or wildcard (PREFIX*) form. These are
+			// typed by the user, so trimming surrounding whitespace is safe.
+			e := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "export "))
 			switch {
 			case e == "":
 				continue
-			case strings.Contains(e, "="):
-				idx := strings.IndexByte(e, '=')
-				resolved[e[:idx]] = e[idx+1:]
 			case strings.HasSuffix(e, "*"):
 				prefix := strings.TrimSuffix(e, "*")
 				for _, kv := range os.Environ() {

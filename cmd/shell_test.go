@@ -328,6 +328,193 @@ func TestResolveEnvVars_MultilineExport(t *testing.T) {
 	}
 }
 
+// TestResolveEnvVars_EdgeCases covers tricky parsing situations, especially
+// whitespace handling in values, which must be preserved exactly.
+func TestResolveEnvVars_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []string
+		wantKey string
+		wantVal string
+	}{
+		{
+			name:    "value with embedded spaces",
+			entries: []string{"GREETING=hello world"},
+			wantKey: "GREETING",
+			wantVal: "hello world",
+		},
+		{
+			name:    "value with trailing spaces is preserved",
+			entries: []string{"PADDED=value   "},
+			wantKey: "PADDED",
+			wantVal: "value   ",
+		},
+		{
+			name:    "value with leading spaces is preserved",
+			entries: []string{"PADDED=   value"},
+			wantKey: "PADDED",
+			wantVal: "   value",
+		},
+		{
+			name:    "value with tabs is preserved",
+			entries: []string{"TABBED=a\tb"},
+			wantKey: "TABBED",
+			wantVal: "a\tb",
+		},
+		{
+			name:    "value containing equals signs",
+			entries: []string{"QUERY=a=b=c"},
+			wantKey: "QUERY",
+			wantVal: "a=b=c",
+		},
+		{
+			name:    "empty value",
+			entries: []string{"EMPTY="},
+			wantKey: "EMPTY",
+			wantVal: "",
+		},
+		{
+			name:    "value of only spaces is preserved",
+			entries: []string{"SPACES=   "},
+			wantKey: "SPACES",
+			wantVal: "   ",
+		},
+		{
+			name:    "export prefix is stripped",
+			entries: []string{"export FOO=bar"},
+			wantKey: "FOO",
+			wantVal: "bar",
+		},
+		{
+			name:    "export prefix with extra spaces before key",
+			entries: []string{"export   FOO=bar"},
+			wantKey: "FOO",
+			wantVal: "bar",
+		},
+		{
+			name:    "leading indentation before key is trimmed",
+			entries: []string{"   FOO=bar"},
+			wantKey: "FOO",
+			wantVal: "bar",
+		},
+		{
+			name:    "key with surrounding spaces is trimmed",
+			entries: []string{"  FOO  =bar"},
+			wantKey: "FOO",
+			wantVal: "bar",
+		},
+		{
+			name:    "CRLF line ending strips the carriage return",
+			entries: []string{"FOO=bar\r"},
+			wantKey: "FOO",
+			wantVal: "bar",
+		},
+		{
+			name:    "value that itself looks like an export statement",
+			entries: []string{"CMD=export FOO=bar"},
+			wantKey: "CMD",
+			wantVal: "export FOO=bar",
+		},
+		{
+			name:    "later assignment wins",
+			entries: []string{"FOO=first", "FOO=second"},
+			wantKey: "FOO",
+			wantVal: "second",
+		},
+		{
+			name:    "later assignment within a multiline blob wins",
+			entries: []string{"FOO=first\nFOO=second"},
+			wantKey: "FOO",
+			wantVal: "second",
+		},
+		{
+			name:    "value with a literal newline-like backslash sequence is kept",
+			entries: []string{`FOO=a\nb`},
+			wantKey: "FOO",
+			wantVal: `a\nb`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveEnvVars(tt.entries)
+			if v, ok := got[tt.wantKey]; !ok {
+				t.Fatalf("resolveEnvVars() missing key %q (got %v)", tt.wantKey, got)
+			} else if v != tt.wantVal {
+				t.Errorf("resolveEnvVars()[%q] = %q, want %q", tt.wantKey, v, tt.wantVal)
+			}
+		})
+	}
+}
+
+// TestResolveEnvVars_Skips checks inputs that should not produce any variable.
+func TestResolveEnvVars_Skips(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []string
+	}{
+		{name: "empty string", entries: []string{""}},
+		{name: "whitespace only line", entries: []string{"   "}},
+		{name: "blank lines in a blob", entries: []string{"\n\n  \n"}},
+		{name: "bare export keyword", entries: []string{"export "}},
+		{name: "line with only equals and no key", entries: []string{"=novalue"}},
+		{name: "line with only spaces before equals", entries: []string{"   =x"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveEnvVars(tt.entries)
+			if len(got) != 0 {
+				t.Errorf("resolveEnvVars(%q) = %v, want empty", tt.entries, got)
+			}
+		})
+	}
+}
+
+// TestResolveEnvVars_BlobWithBlankAndExportLines mirrors the real AWS CLI
+// output, which can include blank lines and an expiration field.
+func TestResolveEnvVars_BlobWithBlankAndExportLines(t *testing.T) {
+	blob := "\n" +
+		"export AWS_ACCESS_KEY_ID=ASIAEXAMPLE\n" +
+		"\n" +
+		"export AWS_SECRET_ACCESS_KEY=secret/with+slashes\n" +
+		"export AWS_SESSION_TOKEN=token==\n" +
+		"export AWS_CREDENTIAL_EXPIRATION=2026-06-27T00:00:00+00:00\n"
+
+	got := resolveEnvVars([]string{blob})
+
+	want := map[string]string{
+		"AWS_ACCESS_KEY_ID":         "ASIAEXAMPLE",
+		"AWS_SECRET_ACCESS_KEY":     "secret/with+slashes",
+		"AWS_SESSION_TOKEN":         "token==",
+		"AWS_CREDENTIAL_EXPIRATION": "2026-06-27T00:00:00+00:00",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("resolveEnvVars() = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("resolveEnvVars()[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
+// TestBuildShellEnv_PreservesWhitespaceValue verifies a value with spaces
+// survives end-to-end into the exec env slice as a single entry.
+func TestBuildShellEnv_PreservesWhitespaceValue(t *testing.T) {
+	env := buildShellEnv(nil, []string{"MSG=hello world  "})
+
+	found := false
+	for _, e := range env {
+		if e == "MSG=hello world  " {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected %q in env, got %v", "MSG=hello world  ", env)
+	}
+}
+
 func TestResolveShellCommand(t *testing.T) {
 	tests := []struct {
 		name     string
