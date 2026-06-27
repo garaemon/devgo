@@ -275,6 +275,44 @@ func TestParseAllFlags_ShellFlag(t *testing.T) {
 	}
 }
 
+func TestParseAllFlags_EnvFlag(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "single --env",
+			args: []string{"shell", "--env", "FOO=bar"},
+			want: []string{"FOO=bar"},
+		},
+		{
+			name: "repeated --env and -e",
+			args: []string{"shell", "--env", "FOO=bar", "-e", "BAZ=qux", "-e", "PATH"},
+			want: []string{"FOO=bar", "BAZ=qux", "PATH"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shellEnvVars = nil
+			defer func() { shellEnvVars = nil }()
+
+			if _, err := parseAllFlags(tt.args); err != nil {
+				t.Fatalf("parseAllFlags error = %v", err)
+			}
+			if len(shellEnvVars) != len(tt.want) {
+				t.Fatalf("shellEnvVars = %v, want %v", shellEnvVars, tt.want)
+			}
+			for i, v := range tt.want {
+				if shellEnvVars[i] != v {
+					t.Errorf("shellEnvVars[%d] = %q, want %q", i, shellEnvVars[i], v)
+				}
+			}
+		})
+	}
+}
+
 func TestParseAllFlags_DotfilesFlags(t *testing.T) {
 	tests := []struct {
 		name           string

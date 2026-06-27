@@ -144,7 +144,7 @@ func TestExecuteInteractiveShell(t *testing.T) {
 				inspectResponse:    tt.inspectResponse,
 			}
 
-			err := executeInteractiveShell(context.Background(), mockClient, tt.containerName, tt.devContainer, []string{"/bin/bash", "-i"})
+			err := executeInteractiveShell(context.Background(), mockClient, tt.containerName, tt.devContainer, []string{"/bin/bash", "-i"}, nil)
 
 			if tt.expectError {
 				if err == nil {
@@ -161,6 +161,146 @@ func TestExecuteInteractiveShell(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestResolveEnvVars(t *testing.T) {
+	t.Setenv("DEVGO_TEST_HOST_VAR", "from_host")
+
+	got := resolveEnvVars([]string{
+		"FOO=bar",
+		"EMPTY=",
+		"WITH=equals=sign",
+		"DEVGO_TEST_HOST_VAR",
+		"DEVGO_TEST_UNSET_VAR",
+		"",
+	})
+
+	want := map[string]string{
+		"FOO":                 "bar",
+		"EMPTY":               "",
+		"WITH":                "equals=sign",
+		"DEVGO_TEST_HOST_VAR": "from_host",
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("resolveEnvVars() = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("resolveEnvVars()[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+	if _, ok := got["DEVGO_TEST_UNSET_VAR"]; ok {
+		t.Errorf("unset host var should be skipped, but it was present")
+	}
+}
+
+func TestBuildShellEnv(t *testing.T) {
+	toMap := func(env []string) map[string]string {
+		m := make(map[string]string)
+		for _, e := range env {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) == 2 {
+				m[parts[0]] = parts[1]
+			}
+		}
+		return m
+	}
+
+	t.Run("defaults TERM when not provided", func(t *testing.T) {
+		got := toMap(buildShellEnv(nil, nil))
+		if got["TERM"] != "xterm-256color" {
+			t.Errorf("TERM = %q, want xterm-256color", got["TERM"])
+		}
+	})
+
+	t.Run("includes container env", func(t *testing.T) {
+		got := toMap(buildShellEnv(map[string]string{"PATH": "/usr/bin"}, nil))
+		if got["PATH"] != "/usr/bin" {
+			t.Errorf("PATH = %q, want /usr/bin", got["PATH"])
+		}
+	})
+
+	t.Run("user env overrides container env", func(t *testing.T) {
+		got := toMap(buildShellEnv(
+			map[string]string{"FOO": "container"},
+			[]string{"FOO=user", "BAR=baz"},
+		))
+		if got["FOO"] != "user" {
+			t.Errorf("FOO = %q, want user (override)", got["FOO"])
+		}
+		if got["BAR"] != "baz" {
+			t.Errorf("BAR = %q, want baz", got["BAR"])
+		}
+	})
+
+	t.Run("user env can override TERM", func(t *testing.T) {
+		got := toMap(buildShellEnv(nil, []string{"TERM=dumb"}))
+		if got["TERM"] != "dumb" {
+			t.Errorf("TERM = %q, want dumb", got["TERM"])
+		}
+	})
+}
+
+func TestShellCommand_PassesExtraEnv(t *testing.T) {
+	devContainer := &devcontainer.DevContainer{
+		ContainerUser:   "testuser",
+		WorkspaceFolder: "/workspace",
+	}
+	containers := []container.Summary{
+		{
+			ID:    "test123",
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				constants.DevgoManagedLabel: constants.DevgoManagedValue,
+			},
+		},
+	}
+	baseMockClient := &mockExecClient{
+		containers:         containers,
+		execCreateResponse: container.ExecCreateResponse{ID: "exec123"},
+		execAttachResponse: createMockHijackedResponse(),
+		inspectResponse: types.ContainerJSON{
+			Config: &container.Config{Env: []string{"PATH=/usr/bin"}},
+		},
+	}
+	mockClient := &mockShellExecClient{mockExecClient: baseMockClient}
+
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer,
+		[]string{"/bin/bash", "-i"}, []string{"FOO=bar"})
+
+	found := false
+	for _, e := range mockClient.capturedExecOptions.Env {
+		if e == "FOO=bar" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected FOO=bar in exec env, got %v", mockClient.capturedExecOptions.Env)
+	}
+}
+
+func TestResolveEnvVars_Wildcard(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "ASIAEXAMPLE")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
+	t.Setenv("AWS_SESSION_TOKEN", "token")
+	t.Setenv("NOT_AWS_VAR", "ignored")
+
+	got := resolveEnvVars([]string{"AWS_*"})
+
+	want := map[string]string{
+		"AWS_ACCESS_KEY_ID":     "ASIAEXAMPLE",
+		"AWS_SECRET_ACCESS_KEY": "secret",
+		"AWS_SESSION_TOKEN":     "token",
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("resolveEnvVars()[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+	if _, ok := got["NOT_AWS_VAR"]; ok {
+		t.Errorf("wildcard AWS_* should not match NOT_AWS_VAR")
 	}
 }
 
@@ -242,7 +382,7 @@ func TestShellCommand_FallsBackToContainerUser(t *testing.T) {
 	}
 	mockClient := &mockShellExecClient{mockExecClient: baseMockClient}
 
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"}, nil)
 
 	if mockClient.capturedExecOptions.User != "node" {
 		t.Errorf("expected shell to fall back to containerUser %q, got %q", "node", mockClient.capturedExecOptions.User)
@@ -274,7 +414,7 @@ func TestShellCommand_PrefersRemoteUser(t *testing.T) {
 	}
 	mockClient := &mockShellExecClient{mockExecClient: baseMockClient}
 
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"}, nil)
 
 	if mockClient.capturedExecOptions.User != "vscode" {
 		t.Errorf("expected shell to run as remoteUser %q, got %q", "vscode", mockClient.capturedExecOptions.User)
@@ -305,7 +445,7 @@ func TestShellCommand_UsesResolvedShell(t *testing.T) {
 	}
 	mockClient := &mockShellExecClient{mockExecClient: baseMockClient}
 
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"zsh", "-i"})
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"zsh", "-i"}, nil)
 
 	got := mockClient.capturedExecOptions.Cmd
 	want := []string{"zsh", "-i"}
@@ -378,7 +518,7 @@ func TestShellCommandExecOptions(t *testing.T) {
 	}
 
 	// This will fail due to terminal handling, but we can still test the exec options
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"}, nil)
 
 	// Verify exec options are set correctly for shell command
 	capturedExecOptions := mockClient.capturedExecOptions
@@ -489,7 +629,7 @@ func TestShellRespectsBashrc(t *testing.T) {
 		mockExecClient: baseMockClient,
 	}
 
-	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"})
+	_ = executeInteractiveShell(context.Background(), mockClient, "test-container", devContainer, []string{"/bin/bash", "-i"}, nil)
 
 	capturedExecOptions := mockClient.capturedExecOptions
 

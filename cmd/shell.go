@@ -66,10 +66,69 @@ func runShellCommand(args []string) error {
 	shellCommand := resolveShellCommand(shellOverride, userConfig)
 
 	ctx := context.Background()
-	return executeInteractiveShell(ctx, cli, containerName, devContainer, shellCommand)
+	return executeInteractiveShell(ctx, cli, containerName, devContainer, shellCommand, shellEnvVars)
 }
 
-func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containerName string, devContainer *devcontainer.DevContainer, shellCommand []string) error {
+// resolveEnvVars parses --env/-e entries into a map of variables. Each entry
+// is one of:
+//
+//	KEY=VALUE   set an explicit value
+//	KEY         inherit the value from the host environment (skipped if unset)
+//	PREFIX*     inherit every host variable whose name starts with PREFIX
+//
+// The wildcard form makes it easy to forward a related group of variables, e.g.
+// after `eval "$(aws configure export-credentials --format env)"` a single
+// `-e 'AWS_*'` forwards all the resulting AWS_ credentials into the shell.
+func resolveEnvVars(entries []string) map[string]string {
+	resolved := make(map[string]string)
+	for _, e := range entries {
+		switch {
+		case e == "":
+			continue
+		case strings.Contains(e, "="):
+			idx := strings.IndexByte(e, '=')
+			resolved[e[:idx]] = e[idx+1:]
+		case strings.HasSuffix(e, "*"):
+			prefix := strings.TrimSuffix(e, "*")
+			for _, kv := range os.Environ() {
+				idx := strings.IndexByte(kv, '=')
+				if idx < 0 {
+					continue
+				}
+				if key := kv[:idx]; strings.HasPrefix(key, prefix) {
+					resolved[key] = kv[idx+1:]
+				}
+			}
+		default:
+			if val, ok := os.LookupEnv(e); ok {
+				resolved[e] = val
+			}
+		}
+	}
+	return resolved
+}
+
+// buildShellEnv builds the environment slice passed to the shell exec. It
+// starts from the container's resolved environment, defaults TERM to
+// xterm-256color, then overlays user-supplied --env entries (which override
+// container values).
+func buildShellEnv(expandedEnv map[string]string, extraEnv []string) []string {
+	merged := map[string]string{"TERM": "xterm-256color"}
+	for k, v := range expandedEnv {
+		merged[k] = v
+	}
+	for k, v := range resolveEnvVars(extraEnv) {
+		merged[k] = v
+	}
+
+	env := make([]string, 0, len(merged))
+	for k, v := range merged {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+	return env
+}
+
+func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containerName string, devContainer *devcontainer.DevContainer, shellCommand []string, extraEnv []string) error {
 	containerID, err := findRunningContainer(ctx, cli, containerName)
 	if err != nil {
 		return fmt.Errorf("failed to find running container: %w", err)
@@ -94,12 +153,9 @@ func executeInteractiveShell(ctx context.Context, cli DockerExecClient, containe
 	}
 
 	expandedEnv := devContainer.GetContainerEnv(baseEnv)
-	var env []string
-	// TERM should be set based on the current terminal, but xterm-256color is a safe default
-	env = append(env, "TERM=xterm-256color")
-	for k, v := range expandedEnv {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
-	}
+	// TERM defaults to xterm-256color; user-supplied --env entries override
+	// container values.
+	env := buildShellEnv(expandedEnv, extraEnv)
 
 	user := devContainer.GetTargetUser()
 	workspaceFolder := devContainer.GetWorkspaceFolder()

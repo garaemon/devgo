@@ -32,6 +32,7 @@ var (
 	noDotfiles             bool
 	forceDotfiles          bool
 	shellOverride          string
+	shellEnvVars           []string
 )
 
 // parseAllFlags parses all flags from the argument list, returning non-flag arguments
@@ -82,6 +83,9 @@ func parseAllFlags(args []string) ([]string, error) {
 			forceDotfiles = true
 		} else if arg == "--shell" && i+1 < len(args) {
 			shellOverride = args[i+1]
+			i++
+		} else if (arg == "--env" || arg == "-e") && i+1 < len(args) {
+			shellEnvVars = append(shellEnvVars, args[i+1])
 			i++
 		} else if len(arg) > 2 && arg[:2] == "--" {
 			// Check if this is an unknown flag
@@ -229,12 +233,24 @@ Flags:
         Re-clone the dotfiles repository even if the target path already exists
   --shell string
         Program to launch for 'devgo shell' (overrides shell setting in user config; defaults to /bin/bash)
+  --env, -e KEY=VALUE
+        Set an environment variable in the 'devgo shell' session. Forms:
+          KEY=VALUE   set an explicit value
+          KEY         inherit the value from the host environment
+          PREFIX*     inherit every host variable whose name starts with PREFIX
+        May be repeated. User values override container values. For an AWS SSO
+        profile, export the credentials into your shell first, then forward them
+        in one go:
+          eval "$(aws configure export-credentials --format env)"
+          devgo shell -e 'AWS_*'
 
 Examples:
   devgo up --workspace-folder .
   devgo build --image-name myapp:latest
   devgo exec bash
   devgo shell
+  devgo shell --env FOO=bar -e PATH
+  devgo shell -e 'AWS_*'
   devgo stop
 `)
 }
