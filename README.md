@@ -255,15 +255,21 @@ Values you pass override variables already defined in the container (`containerE
 
 **AWS SSO profile:**
 
-When you authenticate to AWS with a named profile via SSO, the AWS CLI can export the resolved credentials as environment variables. Export them into your current shell, then forward them all at once with the `AWS_*` wildcard:
+When you authenticate to AWS with a named profile via SSO, the AWS CLI can export the resolved credentials as environment variables. A single `--env` value may contain several newline-separated assignments (a leading `export ` is ignored), so you can pass the command output directly:
 
 ```bash
 aws sso login --profile my-sso-profile
-eval "$(aws configure export-credentials --profile my-sso-profile --format env)"
-devgo shell -e 'AWS_*'
+devgo shell --env "$(aws configure export-credentials --profile my-sso-profile --format env)"
 ```
 
-`aws configure export-credentials` turns the cached SSO login into temporary `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` values, so the AWS CLI inside the container works without mounting `~/.aws`. Add `-e AWS_REGION` (or export it before the wildcard) if you also need the region.
+`aws configure export-credentials` turns the cached SSO login into temporary `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` values, so the AWS CLI inside the container works without mounting `~/.aws`.
+
+Alternatively, export the credentials into your current shell and forward them all at once with the `AWS_*` wildcard, adding `-e AWS_REGION` if you need the region:
+
+```bash
+eval "$(aws configure export-credentials --profile my-sso-profile --format env)"
+devgo shell -e 'AWS_*' -e AWS_REGION
+```
 
 **Detach Keys:**
 

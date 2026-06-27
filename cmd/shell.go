@@ -69,39 +69,45 @@ func runShellCommand(args []string) error {
 	return executeInteractiveShell(ctx, cli, containerName, devContainer, shellCommand, shellEnvVars)
 }
 
-// resolveEnvVars parses --env/-e entries into a map of variables. Each entry
-// is one of:
+// resolveEnvVars parses --env/-e entries into a map of variables. A single
+// entry may contain several newline-separated assignments, and a leading
+// "export " on each line is ignored, so the output of
+// `aws configure export-credentials --format env` can be passed verbatim:
+//
+//	devgo shell --env "$(aws configure export-credentials --format env)"
+//
+// Each (line) is one of:
 //
 //	KEY=VALUE   set an explicit value
 //	KEY         inherit the value from the host environment (skipped if unset)
 //	PREFIX*     inherit every host variable whose name starts with PREFIX
-//
-// The wildcard form makes it easy to forward a related group of variables, e.g.
-// after `eval "$(aws configure export-credentials --format env)"` a single
-// `-e 'AWS_*'` forwards all the resulting AWS_ credentials into the shell.
 func resolveEnvVars(entries []string) map[string]string {
 	resolved := make(map[string]string)
-	for _, e := range entries {
-		switch {
-		case e == "":
-			continue
-		case strings.Contains(e, "="):
-			idx := strings.IndexByte(e, '=')
-			resolved[e[:idx]] = e[idx+1:]
-		case strings.HasSuffix(e, "*"):
-			prefix := strings.TrimSuffix(e, "*")
-			for _, kv := range os.Environ() {
-				idx := strings.IndexByte(kv, '=')
-				if idx < 0 {
-					continue
+	for _, entry := range entries {
+		for _, line := range strings.Split(entry, "\n") {
+			// Tolerate a leading 'export ' so '--format env' output works as-is.
+			e := strings.TrimPrefix(strings.TrimSpace(line), "export ")
+			switch {
+			case e == "":
+				continue
+			case strings.Contains(e, "="):
+				idx := strings.IndexByte(e, '=')
+				resolved[e[:idx]] = e[idx+1:]
+			case strings.HasSuffix(e, "*"):
+				prefix := strings.TrimSuffix(e, "*")
+				for _, kv := range os.Environ() {
+					idx := strings.IndexByte(kv, '=')
+					if idx < 0 {
+						continue
+					}
+					if key := kv[:idx]; strings.HasPrefix(key, prefix) {
+						resolved[key] = kv[idx+1:]
+					}
 				}
-				if key := kv[:idx]; strings.HasPrefix(key, prefix) {
-					resolved[key] = kv[idx+1:]
+			default:
+				if val, ok := os.LookupEnv(e); ok {
+					resolved[e] = val
 				}
-			}
-		default:
-			if val, ok := os.LookupEnv(e); ok {
-				resolved[e] = val
 			}
 		}
 	}

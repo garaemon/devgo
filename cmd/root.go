@@ -238,11 +238,11 @@ Flags:
           KEY=VALUE   set an explicit value
           KEY         inherit the value from the host environment
           PREFIX*     inherit every host variable whose name starts with PREFIX
-        May be repeated. User values override container values. For an AWS SSO
-        profile, export the credentials into your shell first, then forward them
-        in one go:
-          eval "$(aws configure export-credentials --format env)"
-          devgo shell -e 'AWS_*'
+        A single value may contain several newline-separated assignments and a
+        leading 'export ' is ignored, so AWS SSO credentials can be passed in
+        one shot:
+          devgo shell --env "$(aws configure export-credentials --format env)"
+        May be repeated. User values override container values.
 
 Examples:
   devgo up --workspace-folder .
@@ -250,7 +250,7 @@ Examples:
   devgo exec bash
   devgo shell
   devgo shell --env FOO=bar -e PATH
-  devgo shell -e 'AWS_*'
+  devgo shell --env "$(aws configure export-credentials --format env)"
   devgo stop
 `)
 }

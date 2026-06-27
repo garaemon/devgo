@@ -304,6 +304,30 @@ func TestResolveEnvVars_Wildcard(t *testing.T) {
 	}
 }
 
+func TestResolveEnvVars_MultilineExport(t *testing.T) {
+	// Simulates `--env "$(aws configure export-credentials --format env)"`,
+	// whose output is several `export KEY=VALUE` lines in one argument.
+	blob := "export AWS_ACCESS_KEY_ID=ASIAEXAMPLE\n" +
+		"export AWS_SECRET_ACCESS_KEY=secret\n" +
+		"export AWS_SESSION_TOKEN=token\n"
+
+	got := resolveEnvVars([]string{blob})
+
+	want := map[string]string{
+		"AWS_ACCESS_KEY_ID":     "ASIAEXAMPLE",
+		"AWS_SECRET_ACCESS_KEY": "secret",
+		"AWS_SESSION_TOKEN":     "token",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("resolveEnvVars() = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("resolveEnvVars()[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
 func TestResolveShellCommand(t *testing.T) {
 	tests := []struct {
 		name     string
