@@ -317,7 +317,7 @@ services:
 
 // isDockerComposeAvailable checks if Docker Compose is available
 func isDockerComposeAvailable() bool {
-	cmd := exec.Command("docker", "compose", "version")
+	cmd := exec.Command(containerRuntime(), "compose", "version")
 	return cmd.Run() == nil
 }
 
@@ -326,7 +326,7 @@ func cleanupDockerCompose(t *testing.T, projectDir string) {
 	t.Helper()
 
 	// Stop and remove containers using docker compose down
-	cmd := exec.Command("docker", "compose", "down", "--remove-orphans")
+	cmd := exec.Command(containerRuntime(), "compose", "down", "--remove-orphans")
 	cmd.Dir = projectDir
 	if err := cmd.Run(); err != nil {
 		t.Logf("Warning: failed to run docker compose down: %v", err)

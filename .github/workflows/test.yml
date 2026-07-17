@@ -85,7 +85,71 @@ jobs:
       run: |
         cd test/integration
         go test -v -timeout=300s
-        
+
+  integration-podman:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-mod-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Build
+      run: make build
+
+    - name: Ensure Podman is installed
+      run: |
+        if ! command -v podman >/dev/null 2>&1; then
+          sudo apt-get update
+          sudo apt-get install -y podman
+        fi
+        podman version
+
+    # Bring up Podman's Docker-compatible API socket and run the integration
+    # suite against it. The service and the tests share one step so the
+    # background service is guaranteed alive for the whole run. Setting
+    # DEVGO_CONTAINER_RUNTIME=podman makes both the devgo binary under test and
+    # the tests' own helper commands (ps, inspect, exec, ...) drive Podman.
+    - name: Run integration tests with Podman
+      env:
+        DEVGO_CONTAINER_RUNTIME: podman
+      run: |
+        export XDG_RUNTIME_DIR="${HOME}/.podman-run"
+        mkdir -p "${XDG_RUNTIME_DIR}"
+        chmod 700 "${XDG_RUNTIME_DIR}"
+        SOCK="${XDG_RUNTIME_DIR}/podman.sock"
+        podman system service --time=0 "unix://${SOCK}" &
+        SERVICE_PID=$!
+        for _ in $(seq 1 15); do
+          [ -S "${SOCK}" ] && break
+          sleep 1
+        done
+        if [ ! -S "${SOCK}" ]; then
+          echo "Podman API socket did not appear"
+          podman info || true
+          exit 1
+        fi
+        export DOCKER_HOST="unix://${SOCK}"
+        cd test/integration
+        go test -v -timeout=300s
+        status=$?
+        kill "${SERVICE_PID}" 2>/dev/null || true
+        exit $status
+
   lint:
     runs-on: ubuntu-latest
     

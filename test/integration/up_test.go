@@ -120,7 +120,7 @@ func TestUpCommandIntegration(t *testing.T) {
 
 			if !isContainerRunning(t, containerName) {
 				// List all containers for debugging
-				listCmd := exec.Command("docker", "ps", "-a")
+				listCmd := exec.Command(containerRuntime(), "ps", "-a")
 				listOutput, _ := listCmd.Output()
 				t.Logf("All containers: %s", string(listOutput))
 
@@ -219,7 +219,7 @@ func buildExpectedContainerName(workspaceDir string) string {
 }
 
 func isDockerAvailable() bool {
-	execCmd := exec.Command("docker", "version")
+	execCmd := exec.Command(containerRuntime(), "version")
 	return execCmd.Run() == nil
 }
 
@@ -274,7 +274,7 @@ func setupDevcontainer(t *testing.T, tempDir, containerName string) {
 func isContainerRunning(t *testing.T, containerName string) bool {
 	t.Helper()
 
-	cmd := exec.Command("docker", "ps", "--filter", fmt.Sprintf("name=%s", containerName), "--format", "{{.Names}}")
+	cmd := exec.Command(containerRuntime(), "ps", "--filter", fmt.Sprintf("name=%s", containerName), "--format", "{{.Names}}")
 	output, err := cmd.Output()
 	if err != nil {
 		t.Logf("Failed to check if container is running: %v", err)
@@ -288,7 +288,7 @@ func verifyContainerProperties(t *testing.T, containerName, workspaceDir string)
 	t.Helper()
 
 	// Check if container has the correct labels
-	cmd := exec.Command("docker", "inspect", containerName, "--format", "{{.Config.Labels}}")
+	cmd := exec.Command(containerRuntime(), "inspect", containerName, "--format", "{{.Config.Labels}}")
 	output, err := cmd.Output()
 	if err != nil {
 		t.Errorf("Failed to inspect container: %v", err)
@@ -301,7 +301,7 @@ func verifyContainerProperties(t *testing.T, containerName, workspaceDir string)
 	}
 
 	// Check if workspace is mounted correctly
-	cmd = exec.Command("docker", "inspect", containerName, "--format", "{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}")
+	cmd = exec.Command(containerRuntime(), "inspect", containerName, "--format", "{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}")
 	output, err = cmd.Output()
 	if err != nil {
 		t.Errorf("Failed to inspect container mounts: %v", err)
@@ -318,7 +318,7 @@ func verifyContainerProperties(t *testing.T, containerName, workspaceDir string)
 func stopContainer(t *testing.T, containerName string) {
 	t.Helper()
 
-	cmd := exec.Command("docker", "stop", containerName)
+	cmd := exec.Command(containerRuntime(), "stop", containerName)
 	if err := cmd.Run(); err != nil {
 		t.Logf("Failed to stop container %s: %v", containerName, err)
 	}
@@ -329,7 +329,7 @@ func cleanupContainer(t *testing.T, containerName string) {
 
 	// Force stop and remove container
 	// Use -f flag to force removal even if container is running
-	removeCmd := exec.Command("docker", "rm", "-f", containerName)
+	removeCmd := exec.Command(containerRuntime(), "rm", "-f", containerName)
 	removeCmd.Run() // Ignore errors - container might not exist
 
 	// Also cleanup any containers with matching prefix (e.g., docker compose containers)
@@ -347,7 +347,7 @@ func cleanupContainer(t *testing.T, containerName string) {
 		}
 
 		for _, cn := range composeContainers {
-			cmd := exec.Command("docker", "rm", "-f", cn)
+			cmd := exec.Command(containerRuntime(), "rm", "-f", cn)
 			cmd.Run() // Ignore errors
 		}
 	}
@@ -591,7 +591,7 @@ func containerPathExists(t *testing.T, containerName, path string, isDir bool) b
 		testCmd = []string{"test", "-f", path}
 	}
 
-	cmd := exec.Command("docker", "exec", containerName)
+	cmd := exec.Command(containerRuntime(), "exec", containerName)
 	cmd.Args = append(cmd.Args, testCmd...)
 
 	err := cmd.Run()
@@ -601,7 +601,7 @@ func containerPathExists(t *testing.T, containerName, path string, isDir bool) b
 func runCommandInContainer(t *testing.T, containerName string, command []string) string {
 	t.Helper()
 
-	cmd := exec.Command("docker", "exec", containerName)
+	cmd := exec.Command(containerRuntime(), "exec", containerName)
 	cmd.Args = append(cmd.Args, command...)
 
 	output, err := cmd.Output()
@@ -619,7 +619,7 @@ func cleanupContainerFiles(t *testing.T, containerName, workspaceDir string) {
 	// Only cleanup if container exists and is running
 	if !isContainerRunning(t, containerName) {
 		// Check if container exists but is stopped
-		cmd := exec.Command("docker", "ps", "-a", "--filter", fmt.Sprintf("name=%s", containerName), "--format", "{{.Names}}")
+		cmd := exec.Command(containerRuntime(), "ps", "-a", "--filter", fmt.Sprintf("name=%s", containerName), "--format", "{{.Names}}")
 		output, err := cmd.Output()
 		if err != nil || !strings.Contains(string(output), containerName) {
 			return // Container doesn't exist
@@ -636,7 +636,7 @@ func cleanupContainerFiles(t *testing.T, containerName, workspaceDir string) {
 	}
 
 	for _, cmdArgs := range cleanupCommands {
-		cmd := exec.Command("docker", "exec", containerName)
+		cmd := exec.Command(containerRuntime(), "exec", containerName)
 		cmd.Args = append(cmd.Args, cmdArgs...)
 		cmd.Run() // Ignore errors - files might not exist
 	}
@@ -821,7 +821,7 @@ func TestUpdateRemoteUserUIDIntegration(t *testing.T) {
 			// Verify that files created in workspace have correct ownership
 			if tt.expectHostUID && tt.targetUser != "root" {
 				// Create a test file in the container
-				createCmd := exec.Command("docker", "exec", "-u", tt.targetUser, containerName, "touch", "/workspace/test-ownership.txt")
+				createCmd := exec.Command(containerRuntime(), "exec", "-u", tt.targetUser, containerName, "touch", "/workspace/test-ownership.txt")
 				if err := createCmd.Run(); err != nil {
 					t.Logf("Failed to create test file: %v", err)
 				} else {
@@ -843,7 +843,7 @@ func TestUpdateRemoteUserUIDIntegration(t *testing.T) {
 func getContainerUserUID(t *testing.T, containerName, username string) int {
 	t.Helper()
 
-	cmd := exec.Command("docker", "exec", containerName, "id", "-u", username)
+	cmd := exec.Command(containerRuntime(), "exec", containerName, "id", "-u", username)
 	output, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Failed to get UID for user %s: %v", username, err)
@@ -862,7 +862,7 @@ func getContainerUserUID(t *testing.T, containerName, username string) int {
 func getContainerUserGID(t *testing.T, containerName, username string) int {
 	t.Helper()
 
-	cmd := exec.Command("docker", "exec", containerName, "id", "-g", username)
+	cmd := exec.Command(containerRuntime(), "exec", containerName, "id", "-g", username)
 	output, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Failed to get GID for user %s: %v", username, err)
