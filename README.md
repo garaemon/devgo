@@ -1,6 +1,6 @@
 # devgo
 
-A Go CLI tool that runs Docker containers based on devcontainer.json configuration files. `devgo` provides compatibility with the official DevContainer CLI, offering a lightweight alternative for managing development containers.
+A Go CLI tool that runs Docker or Podman containers based on devcontainer.json configuration files. `devgo` provides compatibility with the official DevContainer CLI, offering a lightweight alternative for managing development containers.
 
 ## Features
 
@@ -17,6 +17,7 @@ A Go CLI tool that runs Docker containers based on devcontainer.json configurati
 
 ### ✅ Advanced Features
 
+- **Docker & Podman Runtimes** - Use Docker (default) or Podman via `--runtime`, `DEVGO_CONTAINER_RUNTIME`, or user config (see [Container Runtime](#container-runtime-docker--podman))
 - **Docker Compose Support** - Single and multiple compose files
 - **Lifecycle Commands** - Full support for onCreate, updateContent, postCreate, postStart, postAttach
 - **initializeCommand** - Host-side command execution before container creation
@@ -472,6 +473,63 @@ The `vscode` user's UID/GID will be updated to match your host user, allowing se
 }
 ```
 The `node` user will have the correct permissions to install npm packages and access workspace files.
+
+## Container Runtime (Docker / Podman)
+
+`devgo` drives Docker by default but can use [Podman](https://podman.io/) instead. Podman
+exposes a Docker-compatible API and CLI, so the same devcontainer.json configurations work
+with either runtime.
+
+### Selecting the runtime
+
+The runtime is resolved in the following order of precedence (highest first):
+
+1. The `--runtime` flag: `devgo --runtime podman up`
+2. The `DEVGO_CONTAINER_RUNTIME` environment variable: `export DEVGO_CONTAINER_RUNTIME=podman`
+3. The `containerRuntime` field in `~/.config/devgo/config.json`:
+
+   ```json
+   {
+     "containerRuntime": "podman"
+   }
+   ```
+
+4. The default, `docker`.
+
+Accepted values are `docker` and `podman`.
+
+### How it works
+
+- **CLI operations** (`devgo build`, image push, and Docker Compose) invoke the selected
+  binary directly (`podman build`, `podman compose`, ...).
+- **API operations** (creating, starting, exec-ing, and listing containers) go through the
+  Docker SDK. When Podman is selected, `devgo` automatically points the SDK at Podman's
+  API socket if `DOCKER_HOST` is not already set, checking `CONTAINER_HOST`, the rootless
+  socket (`$XDG_RUNTIME_DIR/podman/podman.sock` or `/run/user/<uid>/podman/podman.sock`),
+  and the rootful socket (`/run/podman/podman.sock`).
+
+### Enabling the Podman socket
+
+The Podman API service must be running for the API operations to connect. For a rootless
+setup, enable the user socket once:
+
+```bash
+systemctl --user enable --now podman.socket
+```
+
+Or start it on demand:
+
+```bash
+podman system service --time=0 &
+```
+
+If your socket lives elsewhere, point `devgo` at it explicitly with `DOCKER_HOST` (or
+Podman's `CONTAINER_HOST`), which always takes precedence over auto-detection:
+
+```bash
+export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
+devgo --runtime podman up
+```
 
 ## Development
 

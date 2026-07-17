@@ -81,6 +81,9 @@ func parseAllFlags(args []string) ([]string, error) {
 			noDotfiles = true
 		} else if arg == "--force-dotfiles" {
 			forceDotfiles = true
+		} else if arg == "--runtime" && i+1 < len(args) {
+			runtimeOverride = args[i+1]
+			i++
 		} else if arg == "--shell" && i+1 < len(args) {
 			shellOverride = args[i+1]
 			i++
@@ -115,6 +118,12 @@ func Execute() error {
 	if showVersion {
 		showVersionInfo()
 		return nil
+	}
+
+	// When Podman is selected, make sure the Docker SDK connects to Podman's
+	// API socket before any command constructs a client via client.FromEnv.
+	if isPodman() {
+		ensurePodmanHost()
 	}
 
 	if len(args) == 0 {
@@ -212,6 +221,10 @@ Flags:
         Override container name
   --push
         Publish the built image
+  --runtime string
+        Container runtime to use: "docker" (default) or "podman". Overrides
+        the DEVGO_CONTAINER_RUNTIME environment variable and the
+        containerRuntime setting in the user config.
   --pull
         Force pull image before starting container
   --session string
