@@ -140,6 +140,9 @@ jobs:
         sudo mkdir -p "${XDG_RUNTIME_DIR}"
         sudo chown "$(id -u):$(id -g)" "${XDG_RUNTIME_DIR}"
         sudo chmod 700 "${XDG_RUNTIME_DIR}"
+        # The service binds the socket at $XDG_RUNTIME_DIR/podman/podman.sock, so
+        # its parent directory must exist before 'podman system service' runs.
+        mkdir -p "${XDG_RUNTIME_DIR}/podman"
         SOCK="${XDG_RUNTIME_DIR}/podman/podman.sock"
         podman system service --time=0 "unix://${SOCK}" &
         SERVICE_PID=$!
