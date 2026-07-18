@@ -24,7 +24,6 @@ const dotfilesExecExitUnknown = -1
 type dotfilesDockerClient interface {
 	ContainerExecCreate(ctx context.Context, containerID string, config container.ExecOptions) (container.ExecCreateResponse, error)
 	ContainerExecAttach(ctx context.Context, execID string, config container.ExecAttachOptions) (types.HijackedResponse, error)
-	ContainerExecStart(ctx context.Context, execID string, config container.ExecStartOptions) error
 	ContainerExecInspect(ctx context.Context, execID string) (container.ExecInspect, error)
 }
 
@@ -62,15 +61,15 @@ func (d *dotfilesExecutor) Exec(ctx context.Context, user string, cmd []string) 
 		return "", "", dotfilesExecExitUnknown, fmt.Errorf("failed to create exec: %w", err)
 	}
 
+	// ContainerExecAttach posts to /exec/{id}/start, which both starts the
+	// exec and hijacks the connection. A separate ContainerExecStart would hit
+	// the same endpoint again; Podman rejects that second start with "exec
+	// session state improper", so attach alone is the portable pattern.
 	attach, err := d.cli.ContainerExecAttach(ctx, create.ID, container.ExecAttachOptions{Tty: false})
 	if err != nil {
 		return "", "", dotfilesExecExitUnknown, fmt.Errorf("failed to attach exec: %w", err)
 	}
 	defer attach.Close()
-
-	if err := d.cli.ContainerExecStart(ctx, create.ID, container.ExecStartOptions{}); err != nil {
-		return "", "", dotfilesExecExitUnknown, fmt.Errorf("failed to start exec: %w", err)
-	}
 
 	var stdout, stderr bytes.Buffer
 	if _, copyErr := stdcopy.StdCopy(&stdout, &stderr, attach.Reader); copyErr != nil && !errors.Is(copyErr, io.EOF) {

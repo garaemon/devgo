@@ -21,6 +21,9 @@ type DockerExecClient interface {
 	ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
 	ContainerInspect(ctx context.Context, containerID string) (types.ContainerJSON, error) //nolint:staticcheck // types.ContainerJSON is deprecated but upgrading requires major refactoring
 	ContainerExecCreate(ctx context.Context, containerID string, config container.ExecOptions) (container.ExecCreateResponse, error)
+	// ContainerExecStart is still used by the interactive shell path
+	// (executeInteractiveShell); executeCommandInContainer relies on
+	// ContainerExecAttach alone to start the exec.
 	ContainerExecStart(ctx context.Context, execID string, config container.ExecStartOptions) error
 	ContainerExecAttach(ctx context.Context, execID string, config container.ExecAttachOptions) (types.HijackedResponse, error)
 	Close() error
@@ -108,6 +111,10 @@ func executeCommandInContainer(ctx context.Context, cli DockerExecClient, contai
 		return fmt.Errorf("failed to create exec instance: %w", err)
 	}
 
+	// ContainerExecAttach posts to /exec/{id}/start, so it both starts the
+	// exec and hijacks the connection for streaming. Do not also call
+	// ContainerExecStart: that hits the same endpoint a second time, which
+	// Docker tolerates but Podman rejects with "exec session state improper".
 	execAttachResp, err := cli.ContainerExecAttach(ctx, execCreateResp.ID, container.ExecAttachOptions{
 		Tty: false,
 	})
@@ -115,12 +122,6 @@ func executeCommandInContainer(ctx context.Context, cli DockerExecClient, contai
 		return fmt.Errorf("failed to attach to exec instance: %w", err)
 	}
 	defer execAttachResp.Close()
-
-	// Start the exec instance
-	err = cli.ContainerExecStart(ctx, execCreateResp.ID, container.ExecStartOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to start exec instance: %w", err)
-	}
 
 	// Demultiplex the output stream (Docker uses multiplexed stdout/stderr)
 	_, err = stdcopy.StdCopy(os.Stdout, os.Stderr, execAttachResp.Reader)
