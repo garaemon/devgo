@@ -128,10 +128,19 @@ jobs:
       env:
         DEVGO_CONTAINER_RUNTIME: podman
       run: |
-        export XDG_RUNTIME_DIR="${HOME}/.podman-run"
-        mkdir -p "${XDG_RUNTIME_DIR}"
-        chmod 700 "${XDG_RUNTIME_DIR}"
-        SOCK="${XDG_RUNTIME_DIR}/podman.sock"
+        # Rootless Podman's network backend (netavark) writes its IPAM state to
+        # /run/user/<uid>/containers/networks regardless of XDG_RUNTIME_DIR, and
+        # GitHub runners have no login session to create /run/user/<uid>. Create
+        # and own it up front so container networking works, then start Podman's
+        # Docker-compatible API socket there. Running the service and the tests
+        # in one step keeps the background service alive for the whole run, and
+        # DEVGO_CONTAINER_RUNTIME=podman makes both the devgo binary under test
+        # and the tests' helper commands (ps, inspect, exec, ...) drive Podman.
+        export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+        sudo mkdir -p "${XDG_RUNTIME_DIR}"
+        sudo chown "$(id -u):$(id -g)" "${XDG_RUNTIME_DIR}"
+        sudo chmod 700 "${XDG_RUNTIME_DIR}"
+        SOCK="${XDG_RUNTIME_DIR}/podman/podman.sock"
         podman system service --time=0 "unix://${SOCK}" &
         SERVICE_PID=$!
         for _ in $(seq 1 15); do
