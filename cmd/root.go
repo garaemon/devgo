@@ -41,7 +41,7 @@ func parseAllFlags(args []string) ([]string, error) {
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "--help" {
+		if arg == "--help" || arg == "-h" {
 			showHelp = true
 		} else if arg == "--version" {
 			showVersion = true
@@ -146,7 +146,9 @@ func Execute() error {
 	case "init":
 		return runInitCommand(commandArgs)
 	default:
-		return runDevContainer(args)
+		fmt.Fprintf(os.Stderr, "Error: unknown command: %s\n\n", command)
+		showUsage()
+		return fmt.Errorf("unknown command: %s", command)
 	}
 }
 
@@ -204,7 +206,7 @@ Flags:
         --verbose is accepted as a deprecated alias.
   --force-build
         Force rebuild of container
-  --help
+  --help, -h
         Show help
   --image-name string
         Set image name and optional version

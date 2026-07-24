@@ -430,6 +430,78 @@ func TestExecute_UnknownOption(t *testing.T) {
 	}
 }
 
+func TestExecute_ShortHelpFlag(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	// Reset help flag so it doesn't leak between tests
+	showHelp = false
+	defer func() { showHelp = false }()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	// -h should be treated as a help flag, same as --help
+	os.Args = []string{"devgo", "-h"}
+
+	err := Execute()
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	w.Close()
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	os.Stderr = oldStderr
+
+	stderrOutput := buf.String()
+	if !strings.Contains(stderrOutput, "devgo - Run commands in a devcontainer") {
+		t.Errorf("stderr should contain usage help, got: %s", stderrOutput)
+	}
+}
+
+func TestExecute_UnknownCommand(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	// Reset globals that parseAllFlags only ever sets to true, so leaked
+	// state from earlier tests can't short-circuit the command dispatch.
+	showHelp = false
+	showVersion = false
+	defer func() { showHelp = false; showVersion = false }()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	// An unrecognized command should error and print usage
+	os.Args = []string{"devgo", "foo"}
+
+	err := Execute()
+	if err == nil {
+		t.Error("expected error but got none")
+	}
+
+	expectedError := "unknown command: foo"
+	if err != nil && err.Error() != expectedError {
+		t.Errorf("expected error %q, got %q", expectedError, err.Error())
+	}
+
+	w.Close()
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	os.Stderr = oldStderr
+
+	stderrOutput := buf.String()
+	if !strings.Contains(stderrOutput, "Error: unknown command: foo") {
+		t.Errorf("stderr should contain error message, got: %s", stderrOutput)
+	}
+	if !strings.Contains(stderrOutput, "devgo - Run commands in a devcontainer") {
+		t.Errorf("stderr should contain usage help, got: %s", stderrOutput)
+	}
+}
+
 func TestExecute_Help(t *testing.T) {
 	// Save original os.Args and restore after test
 	oldArgs := os.Args
