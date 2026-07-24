@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -73,10 +74,7 @@ func ensurePodmanHost() {
 		}
 		return
 	}
-	for _, sock := range podmanSocketCandidates() {
-		if _, err := os.Stat(sock); err != nil {
-			continue
-		}
+	if sock := findPodmanSocket(podmanSocketCandidates(), queryPodmanMachineSocket); sock != "" {
 		host := "unix://" + sock
 		if err := os.Setenv("DOCKER_HOST", host); err != nil {
 			warnf("failed to set DOCKER_HOST for Podman: %v", err)
@@ -87,6 +85,37 @@ func ensurePodmanHost() {
 	}
 	debugln("No Podman API socket found; relying on the SDK default connection." +
 		" Run 'podman system service' or 'systemctl --user start podman.socket' if connections fail.")
+}
+
+// findPodmanSocket returns the first existing socket among the well-known
+// candidate paths, falling back to the socket reported by queryMachineSocket.
+// The fallback covers macOS and Windows, where Podman runs inside a VM and
+// exposes its API through a per-machine socket outside the candidate paths.
+func findPodmanSocket(candidates []string, queryMachineSocket func() string) string {
+	for _, sock := range candidates {
+		if _, err := os.Stat(sock); err == nil {
+			return sock
+		}
+	}
+	if sock := queryMachineSocket(); sock != "" {
+		if _, err := os.Stat(sock); err == nil {
+			return sock
+		}
+	}
+	return ""
+}
+
+// queryPodmanMachineSocket asks the podman CLI for the host-side API socket of
+// the default podman machine. The socket lives under an unpredictable per-user
+// temporary directory, so it cannot be probed as a static candidate path. It
+// returns an empty string when no machine is configured or podman is missing.
+func queryPodmanMachineSocket() string {
+	out, err := exec.Command(containerRuntimeBinary(), "machine", "inspect",
+		"--format", "{{.ConnectionInfo.PodmanSocket.Path}}").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // podmanSocketCandidates lists the well-known locations of the Podman API

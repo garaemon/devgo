@@ -148,6 +148,54 @@ func TestEnsurePodmanHost_UsesContainerHost(t *testing.T) {
 	}
 }
 
+func TestFindPodmanSocket_FallsBackToMachineSocket(t *testing.T) {
+	// On macOS the Podman API socket lives under the podman-machine state
+	// directory, not under the Linux-style candidate paths. devgo must fall
+	// back to the socket path reported by the podman CLI in that case.
+	machineSock := filepath.Join(t.TempDir(), "podman-machine-default-api.sock")
+	if err := os.WriteFile(machineSock, []byte{}, 0o600); err != nil {
+		t.Fatalf("failed to create fake machine socket: %v", err)
+	}
+	missingCandidates := []string{
+		filepath.Join(t.TempDir(), "missing", "podman.sock"),
+	}
+
+	got := findPodmanSocket(missingCandidates, func() string { return machineSock })
+
+	if got != machineSock {
+		t.Errorf("findPodmanSocket() = %q, want %q", got, machineSock)
+	}
+}
+
+func TestFindPodmanSocket_PrefersCandidateOverMachineSocket(t *testing.T) {
+	candidateSock := filepath.Join(t.TempDir(), "podman.sock")
+	if err := os.WriteFile(candidateSock, []byte{}, 0o600); err != nil {
+		t.Fatalf("failed to create fake candidate socket: %v", err)
+	}
+
+	got := findPodmanSocket([]string{candidateSock}, func() string {
+		t.Error("queryMachineSocket should not be called when a candidate exists")
+		return ""
+	})
+
+	if got != candidateSock {
+		t.Errorf("findPodmanSocket() = %q, want %q", got, candidateSock)
+	}
+}
+
+func TestFindPodmanSocket_ReturnsEmptyWhenNothingExists(t *testing.T) {
+	missingCandidates := []string{
+		filepath.Join(t.TempDir(), "missing", "podman.sock"),
+	}
+	missingMachineSock := filepath.Join(t.TempDir(), "missing-machine.sock")
+
+	got := findPodmanSocket(missingCandidates, func() string { return missingMachineSock })
+
+	if got != "" {
+		t.Errorf("findPodmanSocket() = %q, want empty string", got)
+	}
+}
+
 func TestEnsurePodmanHost_DetectsSocketFile(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "")
 	t.Setenv("CONTAINER_HOST", "")
