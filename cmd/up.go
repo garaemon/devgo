@@ -451,7 +451,9 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 	binds := []string{fmt.Sprintf("%s:%s", args.WorkspaceDir, args.WorkspaceFolder)}
 
 	// Add SSH agent forwarding if available
-	if sshagent.IsAvailable() {
+	if !shouldForwardSSHAgent(resolveContainerRuntime(), runtime.GOOS) {
+		debugln("Skipping SSH agent forwarding: host sockets cannot cross the Podman VM boundary")
+	} else if sshagent.IsAvailable() {
 		hostSocket, err := sshagent.GetHostSocket()
 		if err == nil {
 			mount := sshagent.CreateMount(hostSocket)

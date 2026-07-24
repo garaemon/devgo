@@ -196,6 +196,55 @@ func TestFindPodmanSocket_ReturnsEmptyWhenNothingExists(t *testing.T) {
 	}
 }
 
+func TestShouldForwardSSHAgent(t *testing.T) {
+	tests := []struct {
+		name        string
+		runtimeName string
+		goos        string
+		want        bool
+	}{
+		{
+			name:        "docker on linux forwards",
+			runtimeName: "docker",
+			goos:        "linux",
+			want:        true,
+		},
+		{
+			name:        "docker on darwin forwards",
+			runtimeName: "docker",
+			goos:        "darwin",
+			want:        true,
+		},
+		{
+			name:        "podman on linux forwards",
+			runtimeName: "podman",
+			goos:        "linux",
+			want:        true,
+		},
+		{
+			name:        "podman on darwin skips because of the VM boundary",
+			runtimeName: "podman",
+			goos:        "darwin",
+			want:        false,
+		},
+		{
+			name:        "podman on windows skips because of the VM boundary",
+			runtimeName: "podman",
+			goos:        "windows",
+			want:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldForwardSSHAgent(tt.runtimeName, tt.goos); got != tt.want {
+				t.Errorf("shouldForwardSSHAgent(%q, %q) = %v, want %v",
+					tt.runtimeName, tt.goos, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestEnsurePodmanHost_DetectsSocketFile(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "")
 	t.Setenv("CONTAINER_HOST", "")

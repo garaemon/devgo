@@ -118,6 +118,17 @@ func queryPodmanMachineSocket() string {
 	return strings.TrimSpace(string(out))
 }
 
+// shouldForwardSSHAgent reports whether the host SSH agent socket can be
+// bind-mounted into containers. Podman on macOS and Windows runs containers
+// inside a VM, and a host unix socket cannot cross the VM boundary, so
+// forwarding is disabled there.
+func shouldForwardSSHAgent(runtimeName, goos string) bool {
+	if runtimeName != "podman" {
+		return true
+	}
+	return goos != "darwin" && goos != "windows"
+}
+
 // podmanSocketCandidates lists the well-known locations of the Podman API
 // socket, most specific first: the rootless per-user socket (via
 // XDG_RUNTIME_DIR or the numeric uid) followed by the rootful system socket.
