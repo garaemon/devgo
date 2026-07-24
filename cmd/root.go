@@ -118,7 +118,8 @@ func Execute() error {
 	}
 
 	if len(args) == 0 {
-		return runDevContainer(args)
+		showUsage()
+		return nil
 	}
 
 	command := args[0]
@@ -259,20 +260,6 @@ Examples:
 
 func showVersionInfo() {
 	fmt.Println("devgo version 0.4.0")
-}
-
-func runDevContainer(args []string) error {
-	// TODO: Implement actual functionality
-	debugf("devgo called with args: %v\n", args)
-	debugf("config: %s, build: %t, name: %s\n", configPath, forceBuild, containerName)
-
-	devcontainerPath, err := findDevcontainerConfig(configPath)
-	if err != nil {
-		return fmt.Errorf("failed to find devcontainer config: %w", err)
-	}
-
-	debugf("Found devcontainer config at: %s\n", devcontainerPath)
-	return nil
 }
 
 func findDevcontainerConfig(configPath string) (string, error) {

@@ -502,6 +502,39 @@ func TestExecute_UnknownCommand(t *testing.T) {
 	}
 }
 
+func TestExecute_NoCommand(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	// Reset globals that parseAllFlags only ever sets to true, so leaked
+	// state from earlier tests can't change the no-command behavior.
+	showHelp = false
+	showVersion = false
+	defer func() { showHelp = false; showVersion = false }()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	// Running devgo with no command should print usage and succeed.
+	os.Args = []string{"devgo"}
+
+	err := Execute()
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	w.Close()
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	os.Stderr = oldStderr
+
+	stderrOutput := buf.String()
+	if !strings.Contains(stderrOutput, "devgo - Run commands in a devcontainer") {
+		t.Errorf("stderr should contain usage help, got: %s", stderrOutput)
+	}
+}
+
 func TestExecute_Help(t *testing.T) {
 	// Save original os.Args and restore after test
 	oldArgs := os.Args
