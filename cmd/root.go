@@ -41,7 +41,7 @@ func parseAllFlags(args []string) ([]string, error) {
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "--help" {
+		if arg == "--help" || arg == "-h" {
 			showHelp = true
 		} else if arg == "--version" {
 			showVersion = true
@@ -118,7 +118,8 @@ func Execute() error {
 	}
 
 	if len(args) == 0 {
-		return runDevContainer(args)
+		showUsage()
+		return nil
 	}
 
 	command := args[0]
@@ -146,7 +147,9 @@ func Execute() error {
 	case "init":
 		return runInitCommand(commandArgs)
 	default:
-		return runDevContainer(args)
+		fmt.Fprintf(os.Stderr, "Error: unknown command: %s\n\n", command)
+		showUsage()
+		return fmt.Errorf("unknown command: %s", command)
 	}
 }
 
@@ -204,7 +207,7 @@ Flags:
         --verbose is accepted as a deprecated alias.
   --force-build
         Force rebuild of container
-  --help
+  --help, -h
         Show help
   --image-name string
         Set image name and optional version
@@ -257,20 +260,6 @@ Examples:
 
 func showVersionInfo() {
 	fmt.Println("devgo version 0.4.0")
-}
-
-func runDevContainer(args []string) error {
-	// TODO: Implement actual functionality
-	debugf("devgo called with args: %v\n", args)
-	debugf("config: %s, build: %t, name: %s\n", configPath, forceBuild, containerName)
-
-	devcontainerPath, err := findDevcontainerConfig(configPath)
-	if err != nil {
-		return fmt.Errorf("failed to find devcontainer config: %w", err)
-	}
-
-	debugf("Found devcontainer config at: %s\n", devcontainerPath)
-	return nil
 }
 
 func findDevcontainerConfig(configPath string) (string, error) {
