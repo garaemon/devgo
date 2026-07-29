@@ -451,7 +451,9 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 	binds := []string{fmt.Sprintf("%s:%s", args.WorkspaceDir, args.WorkspaceFolder)}
 
 	// Add SSH agent forwarding if available
-	if sshagent.IsAvailable() {
+	if !shouldForwardSSHAgent(resolveContainerRuntime(), runtime.GOOS) {
+		debugln("Skipping SSH agent forwarding: host sockets cannot cross the Podman VM boundary")
+	} else if sshagent.IsAvailable() {
 		hostSocket, err := sshagent.GetHostSocket()
 		if err == nil {
 			mount := sshagent.CreateMount(hostSocket)
@@ -753,17 +755,17 @@ func startContainerWithDockerCompose(ctx context.Context, devContainer *devconta
 
 	// Start docker compose services
 	upArgs := append(composeArgs, append([]string{"up", "-d"}, runServices...)...)
-	upCmd := exec.Command("docker", append([]string{"compose"}, upArgs...)...)
+	upCmd := exec.Command(containerRuntimeBinary(), append([]string{"compose"}, upArgs...)...)
 	upCmd.Dir = workspaceDir
 	upCmd.Stdout = os.Stdout
 	upCmd.Stderr = os.Stderr
 
-	debugf("Starting docker compose services: %s\n", strings.Join(runServices, ", "))
+	debugf("Starting compose services: %s\n", strings.Join(runServices, ", "))
 	if err := upCmd.Run(); err != nil {
-		return fmt.Errorf("failed to start docker compose services: %w", err)
+		return fmt.Errorf("failed to start compose services: %w", err)
 	}
 
-	debugf("Docker compose services started successfully\n")
+	debugf("Compose services started successfully\n")
 	return executeLifecycleCommands(ctx, devContainer, containerName, workspaceDir)
 }
 
@@ -799,7 +801,7 @@ func getComposeServiceEnv(workspaceDir string, composeFiles []string, service st
 	}
 	args = append(args, "config", "--format", "json")
 
-	cmd := exec.Command("docker", append([]string{"compose"}, args...)...)
+	cmd := exec.Command(containerRuntimeBinary(), append([]string{"compose"}, args...)...)
 	cmd.Dir = workspaceDir
 	output, err := cmd.Output()
 	if err != nil {

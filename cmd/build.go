@@ -73,14 +73,15 @@ func buildDevContainer(devContainer *devcontainer.DevContainer, workspaceDir, de
 
 	buildArgs = append(buildArgs, buildContext)
 
-	cmd := exec.Command("docker", buildArgs...)
+	runtimeBin := containerRuntimeBinary()
+	cmd := exec.Command(runtimeBin, buildArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	debugf("Running: docker %s\n", strings.Join(buildArgs, " "))
+	debugf("Running: %s %s\n", runtimeBin, strings.Join(buildArgs, " "))
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker build failed: %w", err)
+		return fmt.Errorf("%s build failed: %w", runtimeBin, err)
 	}
 
 	debugf("Successfully built image: %s\n", imageTag)
@@ -131,12 +132,13 @@ func determineImageTag(devContainer *devcontainer.DevContainer, workspaceDir str
 func pushImage(imageTag string) error {
 	debugf("Pushing image: %s\n", imageTag)
 
-	cmd := exec.Command("docker", "push", imageTag)
+	runtimeBin := containerRuntimeBinary()
+	cmd := exec.Command(runtimeBin, "push", imageTag)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker push failed: %w", err)
+		return fmt.Errorf("%s push failed: %w", runtimeBin, err)
 	}
 
 	debugf("Successfully pushed image: %s\n", imageTag)

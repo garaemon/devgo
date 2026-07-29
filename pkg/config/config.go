@@ -12,6 +12,9 @@ type Config struct {
 	DockerHost      string
 	ContainerPrefix string
 	WorkspaceMount  string
+	// ContainerRuntime selects the container engine devgo drives ("docker"
+	// or "podman"). Empty means the default ("docker").
+	ContainerRuntime string
 }
 
 // DotfilesConfig holds the persistent dotfiles preferences loaded from
@@ -33,13 +36,18 @@ type UserConfig struct {
 	// Shell overrides the program devgo invokes for `devgo shell`. When
 	// empty, devgo falls back to /bin/bash. Always launched with -i.
 	Shell string `json:"shell,omitempty"`
+	// ContainerRuntime selects the container engine devgo drives ("docker"
+	// or "podman"). Empty means the default ("docker"). The --runtime flag
+	// and DEVGO_CONTAINER_RUNTIME environment variable override this value.
+	ContainerRuntime string `json:"containerRuntime,omitempty"`
 }
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		DockerHost:      getEnv("DOCKER_HOST", ""),
-		ContainerPrefix: getEnv("DEVGO_CONTAINER_PREFIX", "devgo-"),
-		WorkspaceMount:  getEnv("DEVGO_WORKSPACE_MOUNT", "/workspace"),
+		DockerHost:       getEnv("DOCKER_HOST", ""),
+		ContainerPrefix:  getEnv("DEVGO_CONTAINER_PREFIX", "devgo-"),
+		WorkspaceMount:   getEnv("DEVGO_WORKSPACE_MOUNT", "/workspace"),
+		ContainerRuntime: getEnv("DEVGO_CONTAINER_RUNTIME", ""),
 	}
 
 	return cfg, nil

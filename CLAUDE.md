@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`devgo` is a Go CLI tool that runs Docker containers based on devcontainer.json configuration files. It automatically discovers devcontainer configurations and executes commands inside the appropriate container environment.
+`devgo` is a Go CLI tool that runs Docker or Podman containers based on devcontainer.json configuration files. It automatically discovers devcontainer configurations and executes commands inside the appropriate container environment. The container runtime is selectable via the `--runtime` flag, the `DEVGO_CONTAINER_RUNTIME` environment variable, or the `containerRuntime` field in `~/.config/devgo/config.json` (see `cmd/runtime.go`).
 
 ## Architecture
 

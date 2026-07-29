@@ -16,7 +16,6 @@ import (
 type mockDotfilesClient struct {
 	createErr   error
 	attachErr   error
-	startErr    error
 	inspectErr  error
 	exitCode    int
 	attachResp  types.HijackedResponse
@@ -36,10 +35,6 @@ func (m *mockDotfilesClient) ContainerExecAttach(_ context.Context, _ string, _ 
 		return types.HijackedResponse{}, m.attachErr
 	}
 	return m.attachResp, nil
-}
-
-func (m *mockDotfilesClient) ContainerExecStart(_ context.Context, _ string, _ container.ExecStartOptions) error {
-	return m.startErr
 }
 
 func (m *mockDotfilesClient) ContainerExecInspect(_ context.Context, _ string) (container.ExecInspect, error) {
@@ -88,21 +83,6 @@ func TestDotfilesExecutor_AttachError_ReturnsExitUnknown(t *testing.T) {
 	_, _, code, err := exec.Exec(context.Background(), "u", []string{"true"})
 	if err == nil {
 		t.Fatalf("expected error from Exec when ExecAttach fails")
-	}
-	if code != dotfilesExecExitUnknown {
-		t.Errorf("expected exit code = %d (unknown), got %d", dotfilesExecExitUnknown, code)
-	}
-}
-
-func TestDotfilesExecutor_StartError_ReturnsExitUnknown(t *testing.T) {
-	mock := &mockDotfilesClient{
-		attachResp: createMockHijackedResponseValid(),
-		startErr:   errors.New("boom"),
-	}
-	exec := newDotfilesExecutor(mock, "container1")
-	_, _, code, err := exec.Exec(context.Background(), "u", []string{"true"})
-	if err == nil {
-		t.Fatalf("expected error from Exec when ExecStart fails")
 	}
 	if code != dotfilesExecExitUnknown {
 		t.Errorf("expected exit code = %d (unknown), got %d", dotfilesExecExitUnknown, code)
