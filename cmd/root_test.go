@@ -567,3 +567,74 @@ func TestExecute_Help(t *testing.T) {
 		t.Errorf("stderr should contain usage help, got: %s", stderrOutput)
 	}
 }
+
+func TestParseAllFlagsExecPassthrough(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		expectedArgs    []string
+		expectedVersion bool
+		expectedHelp    bool
+	}{
+		{
+			name:            "version flag after exec command passes through",
+			args:            []string{"exec", "claude", "--version"},
+			expectedArgs:    []string{"exec", "claude", "--version"},
+			expectedVersion: false,
+		},
+		{
+			name:         "help flag after exec command passes through",
+			args:         []string{"exec", "ls", "--help"},
+			expectedArgs: []string{"exec", "ls", "--help"},
+			expectedHelp: false,
+		},
+		{
+			name:         "unknown flag after exec command passes through",
+			args:         []string{"exec", "npm", "install", "--save-dev", "typescript"},
+			expectedArgs: []string{"exec", "npm", "install", "--save-dev", "typescript"},
+		},
+		{
+			name:         "devgo flags between exec and command are still parsed",
+			args:         []string{"exec", "--workspace-folder", "/path", "claude", "--version"},
+			expectedArgs: []string{"exec", "claude", "--version"},
+		},
+		{
+			name:            "version flag before exec is parsed by devgo",
+			args:            []string{"--version", "exec", "claude"},
+			expectedArgs:    []string{"exec", "claude"},
+			expectedVersion: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			showHelp = false
+			showVersion = false
+			workspaceFolder = ""
+			defer func() {
+				showHelp = false
+				showVersion = false
+				workspaceFolder = ""
+			}()
+
+			result, err := parseAllFlags(tt.args)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(result) != len(tt.expectedArgs) {
+				t.Fatalf("parseAllFlags() = %v, want %v", result, tt.expectedArgs)
+			}
+			for i, arg := range tt.expectedArgs {
+				if result[i] != arg {
+					t.Errorf("parseAllFlags()[%d] = %q, want %q", i, result[i], arg)
+				}
+			}
+			if showVersion != tt.expectedVersion {
+				t.Errorf("showVersion = %v, want %v", showVersion, tt.expectedVersion)
+			}
+			if showHelp != tt.expectedHelp {
+				t.Errorf("showHelp = %v, want %v", showHelp, tt.expectedHelp)
+			}
+		})
+	}
+}
