@@ -109,6 +109,14 @@ devgo --help
    devgo down
    ```
 
+## Samples
+
+The [samples](samples/) directory contains ready-to-use devcontainer
+configurations:
+
+- [claude-code](samples/claude-code/): Run Claude Code inside a devgo
+  container, reusing the Claude Code credentials from your host.
+
 ## Command Reference
 
 ### `devgo init`

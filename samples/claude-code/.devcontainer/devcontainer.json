@@ -1,0 +1,19 @@
+{
+  // Sample devcontainer for running Claude Code inside a devgo container.
+  // See samples/claude-code/README.md for setup instructions.
+  "name": "claude-code-sample",
+  "image": "node:22",
+  // Share the host Claude Code configuration (including credentials)
+  // with the container. Replace /home/YOUR_USER with your host home
+  // directory; devgo does not expand ${localEnv:HOME} in mounts yet.
+  "mounts": [
+    {
+      "type": "bind",
+      "source": "/home/YOUR_USER/.claude",
+      "target": "/root/.claude"
+    }
+  ],
+  // Install Claude Code and mark onboarding as done so that headless
+  // (claude -p) invocations work without an interactive first run.
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code && { [ -f /root/.claude.json ] || echo '{\"hasCompletedOnboarding\": true}' > /root/.claude.json; }"
+}
