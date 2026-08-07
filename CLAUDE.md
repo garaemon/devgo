@@ -62,8 +62,9 @@ make help
 - **Integration tests**: Test with actual Docker containers and sample devcontainer configs
 - **CI/CD**: GitHub Actions workflow tests on Go 1.21–1.24. A `coverage` job posts a
   sticky PR comment with project/patch coverage diffs (computed by `tools/covreport`,
-  no external service). For an HTML view, run `make test-coverage` locally and open
-  `coverage.html`.
+  no external service). Baselines are recorded per main commit on the `coverage-data`
+  branch by the `record-coverage` job, so PR runs test only the head. For an HTML
+  view, run `make test-coverage` locally and open `coverage.html`.
 
 ## Code Style
 
