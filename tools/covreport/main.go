@@ -38,6 +38,12 @@ func main() {
 	baseName := flag.String("base-name", "main", "display name of the base branch")
 	format := flag.String("format", "markdown",
 		"output format: markdown (PR report) or html (annotated source browser)")
+	diffBase := flag.String("diff-base", "",
+		"base revision; runs `git diff -U0 <base> [<head>]` for patch coverage")
+	diffHead := flag.String("diff-head", "",
+		"head revision for -diff-base (default: working tree); sources read via git show")
+	diffContext := flag.Int("diff-context", 3,
+		"context lines shown around changed lines in the html diff view")
 	flag.Parse()
 
 	if *coverPath == "" {
@@ -53,14 +59,40 @@ func main() {
 		*module = m
 	}
 
+	if *diffPath != "" && *diffBase != "" {
+		fmt.Fprintln(os.Stderr, "covreport: cannot use -diff with -diff-base")
+		os.Exit(2)
+	}
+	if *diffHead != "" && *diffBase == "" {
+		fmt.Fprintln(os.Stderr, "covreport: -diff-head requires -diff-base")
+		os.Exit(2)
+	}
+
 	head, err := parseProfile(*coverPath, *module)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "covreport: %v\n", err)
 		os.Exit(1)
 	}
 
+	added, haveDiff, err := loadAddedLines(*diffPath, *diffBase, *diffHead)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "covreport: %v\n", err)
+		os.Exit(1)
+	}
+
 	if *format == "html" {
-		if err := renderHTML(os.Stdout, head, *module, *commit, nil); err != nil {
+		opts := htmlOptions{
+			Module:   *module,
+			Commit:   *commit,
+			Added:    added,
+			HaveDiff: haveDiff,
+			DiffBase: *diffBase,
+			DiffHead: *diffHead,
+			DiffFile: *diffPath,
+			Context:  *diffContext,
+			Source:   sourceFor(*diffHead),
+		}
+		if err := renderHTML(os.Stdout, head, opts); err != nil {
 			fmt.Fprintf(os.Stderr, "covreport: %v\n", err)
 			os.Exit(1)
 		}
@@ -80,18 +112,36 @@ func main() {
 		}
 	}
 
-	var added map[string][]int
-	haveDiff := false
-	if *diffPath != "" {
-		added, err = parseDiff(*diffPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "covreport: %v\n", err)
-			os.Exit(1)
-		}
-		haveDiff = true
-	}
-
 	fmt.Print(renderMarkdown(head, base, added, haveDiff, *module, *commit, *baseName))
+}
+
+// loadAddedLines resolves the added-line map from either a pre-generated diff
+// file (-diff) or a revision range (-diff-base/-diff-head). The bool reports
+// whether a diff was requested at all.
+func loadAddedLines(diffPath, diffBase, diffHead string) (map[string][]int, bool, error) {
+	switch {
+	case diffPath != "":
+		added, err := parseDiff(diffPath)
+		return added, err == nil, err
+	case diffBase != "":
+		out, err := gitDiff(diffBase, diffHead)
+		if err != nil {
+			return nil, false, err
+		}
+		source := fmt.Sprintf("git diff %s %s", diffBase, diffHead)
+		added, err := parseDiffBytes(out, source)
+		return added, err == nil, err
+	}
+	return nil, false, nil
+}
+
+// sourceFor picks where head sources are read from: the working directory when
+// no head revision was named, otherwise that revision.
+func sourceFor(rev string) sourceReader {
+	if rev == "" {
+		return func(rel string) ([]byte, error) { return os.ReadFile(rel) }
+	}
+	return func(rel string) ([]byte, error) { return gitShow(rev, rel) }
 }
 
 func moduleFromGoMod(path string) (string, error) {
@@ -158,8 +208,8 @@ func parseDiff(path string) (map[string][]int, error) {
 	return parseDiffBytes(data, path)
 }
 
-// parseDiffBytes is parseDiff over an in-memory diff; source only names the
-// input in error messages.
+// parseDiffBytes extracts added-line numbers per new-side path. source names
+// where the diff came from, for error messages.
 func parseDiffBytes(data []byte, source string) (map[string][]int, error) {
 	added := map[string][]int{}
 	current := ""
@@ -284,41 +334,56 @@ func patchCoverage(head profile, added map[string][]int, module string) []fileSt
 	sort.Strings(files)
 
 	for _, file := range files {
-		lines := added[file]
-		lineSet := map[int]bool{}
-		for _, l := range lines {
-			lineSet[l] = true
-		}
-		blocks := head[module+"/"+file]
-		var st fileStat
-		st.file = file
-		for _, b := range blocks {
-			touched := false
-			for l := b.startLine; l <= b.endLine; l++ {
-				if lineSet[l] {
-					touched = true
-					break
-				}
-			}
-			if !touched {
-				continue
-			}
-			st.t.add(b)
-			if b.count == 0 {
-				for l := b.startLine; l <= b.endLine; l++ {
-					if lineSet[l] {
-						st.uncovered = append(st.uncovered, l)
-					}
-				}
-			}
-		}
+		st := fileStatFor(file, added[file], head[module+"/"+file])
 		if st.t.total > 0 {
-			sort.Ints(st.uncovered)
-			st.uncovered = dedupInts(st.uncovered)
 			stats = append(stats, st)
 		}
 	}
 	return stats
+}
+
+// fileStatFor computes one file's patch tally: the statements of every block
+// overlapping an added line, plus the added lines that fall in uncovered
+// blocks.
+func fileStatFor(file string, added []int, blocks []block) fileStat {
+	lineSet := map[int]bool{}
+	for _, l := range added {
+		lineSet[l] = true
+	}
+	st := fileStat{file: file}
+	for _, b := range blocks {
+		touched := false
+		for l := b.startLine; l <= b.endLine; l++ {
+			if lineSet[l] {
+				touched = true
+				break
+			}
+		}
+		if !touched {
+			continue
+		}
+		st.t.add(b)
+		if b.count == 0 {
+			for l := b.startLine; l <= b.endLine; l++ {
+				if lineSet[l] {
+					st.uncovered = append(st.uncovered, l)
+				}
+			}
+		}
+	}
+	sort.Ints(st.uncovered)
+	st.uncovered = dedupInts(st.uncovered)
+	return st
+}
+
+// patchTallies returns the patch tally of every changed file, including files
+// with no coverable statements, which the html sidebar still needs to list.
+func patchTallies(head profile, added map[string][]int, module string) map[string]tally {
+	out := make(map[string]tally, len(added))
+	for file, lines := range added {
+		out[file] = fileStatFor(file, lines, head[module+"/"+file]).t
+	}
+	return out
 }
 
 func dedupInts(s []int) []int {
@@ -418,7 +483,8 @@ func renderMarkdown(head, base profile, added map[string][]int, haveDiff bool,
 
 	b.WriteString("---\n")
 	b.WriteString("To browse the full HTML report locally, check out this branch and run " +
-		"`make test-coverage`, then open `coverage.html`.\n")
+		"`make test-coverage`, then open `coverage.html`. For a view of just these " +
+		"changed lines, run `make coverage-diff BASE=" + baseName + "`.\n")
 	return b.String()
 }
 
