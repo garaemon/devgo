@@ -40,7 +40,7 @@ install:
 # Run tests with coverage
 test-coverage:
 	go test -v -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out -o coverage.html
+	go run ./tools/covreport -cover coverage.out -format html > coverage.html
 
 # Print a markdown coverage summary (same tool CI uses for PR comments)
 coverage-report: test-coverage
