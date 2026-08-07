@@ -60,7 +60,10 @@ make help
 
 - **Unit tests**: Test individual packages with mocks
 - **Integration tests**: Test with actual Docker containers and sample devcontainer configs
-- **CI/CD**: GitHub Actions workflow tests on Go 1.20 and 1.21
+- **CI/CD**: GitHub Actions workflow tests on Go 1.21–1.24. A `coverage` job posts a
+  sticky PR comment with project/patch coverage diffs (computed by `tools/covreport`,
+  no external service). For an HTML view, run `make test-coverage` locally and open
+  `coverage.html`.
 
 ## Code Style
 
