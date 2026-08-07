@@ -88,18 +88,29 @@ jobs:
     - name: Run tests with coverage (head)
       run: go test -coverprofile=coverage.out -covermode=atomic ./...
 
-    # The base profile is regenerated from the merge-base in a worktree on
-    # every run: slower than caching a baseline, but immune to artifact
-    # expiry and always comparable to the exact commit the PR diffs against.
-    - name: Run tests with coverage (base)
+    # The base profile comes from the coverage-data branch, where the
+    # record-coverage job stores one profile per main commit — no second
+    # test run. If the merge-base itself has no stored profile yet (e.g.
+    # its record run is still in flight), walk back along first-parent
+    # history to the nearest recorded commit.
+    - name: Fetch baseline coverage
       run: |
         BASE=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
         echo "BASE=$BASE" >> "$GITHUB_ENV"
-        git worktree add /tmp/base "$BASE"
-        cd /tmp/base
-        go mod download
-        go test -coverprofile="$GITHUB_WORKSPACE/base-coverage.out" -covermode=atomic ./... \
-          || echo "::warning::base tests failed; project delta will be omitted"
+        git fetch origin coverage-data || true
+        if git rev-parse --verify --quiet origin/coverage-data >/dev/null; then
+          for sha in $(git rev-list --first-parent -n 50 "$BASE"); do
+            if git cat-file -e "origin/coverage-data:profiles/${sha}.out" 2>/dev/null; then
+              git show "origin/coverage-data:profiles/${sha}.out" > base-coverage.out
+              echo "BASELINE_SHA=$sha" >> "$GITHUB_ENV"
+              echo "using baseline from $sha"
+              break
+            fi
+          done
+        fi
+        if [ ! -s base-coverage.out ]; then
+          echo "::warning::no stored baseline on coverage-data; project delta will be omitted"
+        fi
 
     - name: Generate coverage report
       run: |
@@ -107,9 +118,9 @@ jobs:
         HEAD_SHA="${{ github.event.pull_request.head.sha }}"
         ARGS="-cover coverage.out -diff pr.diff"
         ARGS="$ARGS -commit ${HEAD_SHA:0:7}"
-        ARGS="$ARGS -base-name ${{ github.base_ref }}"
         if [ -s base-coverage.out ]; then
           ARGS="$ARGS -base-cover base-coverage.out"
+          ARGS="$ARGS -base-name ${{ github.base_ref }}@${BASELINE_SHA:0:7}"
         fi
         go run ./tools/covreport $ARGS > coverage-report.md
         cat coverage-report.md >> "$GITHUB_STEP_SUMMARY"
@@ -135,6 +146,60 @@ jobs:
           } else {
             await github.rest.issues.createComment({owner, repo, issue_number, body});
           }
+
+  # Stores the coverage profile of every main commit on the coverage-data
+  # branch (profiles/<sha>.out) so PR coverage runs can diff against a
+  # recorded baseline instead of re-running the tests on the merge-base.
+  record-coverage:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    # Serializes pushes to coverage-data so concurrent main pushes can't
+    # race each other on the branch update.
+    concurrency:
+      group: coverage-data
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-mod-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run tests with coverage
+      run: go test -coverprofile=coverage.out -covermode=atomic ./...
+
+    - name: Record profile on coverage-data branch
+      run: |
+        cp coverage.out /tmp/recorded-coverage.out
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        if git fetch origin coverage-data; then
+          git checkout -B coverage-data origin/coverage-data
+        else
+          git checkout --orphan coverage-data
+          git rm -rf --quiet .
+        fi
+        mkdir -p profiles
+        cp /tmp/recorded-coverage.out "profiles/${GITHUB_SHA}.out"
+        git add profiles
+        git commit -m "Record coverage for ${GITHUB_SHA}"
+        git push origin coverage-data
 
   integration:
     runs-on: ubuntu-latest

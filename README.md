@@ -579,9 +579,26 @@ anything under `test/` or `tools/`.
 #### How CI reports it
 
 On every pull request the `coverage` job runs the coverage tests on the head
-commit and on the merge-base, writes the report to the job summary, and
-maintains a **single sticky comment** on the PR that is updated in place on
-each push. The job is informational — it never fails on a coverage
-percentage. Pull requests from forks get the job summary but no comment,
-since they have no write token.
+commit, writes the report to the job summary, and maintains a **single sticky
+comment** on the PR that is updated in place on each push. The job is
+informational — it never fails on a coverage percentage. Pull requests from
+forks get the job summary but no comment, since they have no write token.
+
+#### The `coverage-data` branch
+
+Baselines live on a dedicated orphan branch named **`coverage-data`**, which
+holds nothing but coverage profiles at `profiles/<commit-sha>.out`. It carries
+no project source and is never merged into `main`.
+
+- On every push to `main`, the `record-coverage` job runs the coverage tests
+  once and commits that commit's profile to `coverage-data`. Concurrent pushes
+  are serialized so they cannot clobber each other, and the branch is created
+  as an orphan on the first run.
+- Pull request runs *read* that branch to get their baseline, so they only
+  ever test their own head — the base branch is never re-tested. If the
+  merge-base has no stored profile yet (for example its record run is still in
+  flight), the job walks back along first-parent history up to 50 commits to
+  find the nearest recorded one, and the report labels which commit it used.
+- If no baseline is found at all, the report says "Baseline unavailable" and
+  omits the project delta; patch coverage is unaffected.
 
