@@ -1783,3 +1783,102 @@ func TestHasFeatures(t *testing.T) {
 		})
 	}
 }
+
+func writeTempDevcontainer(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "devcontainer.json")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write devcontainer.json: %v", err)
+	}
+	return path
+}
+
+func TestParse_MountsObjectFormat(t *testing.T) {
+	path := writeTempDevcontainer(t, `{
+		"image": "node:22",
+		"mounts": [
+			{"type": "bind", "source": "/host/dir", "target": "/container/dir"}
+		]
+	}`)
+
+	dc, err := Parse(path)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(dc.Mounts) != 1 {
+		t.Fatalf("len(Mounts) = %d, want 1", len(dc.Mounts))
+	}
+	expected := Mount{Type: "bind", Source: "/host/dir", Target: "/container/dir"}
+	if dc.Mounts[0] != expected {
+		t.Errorf("Mounts[0] = %+v, want %+v", dc.Mounts[0], expected)
+	}
+}
+
+func TestParse_MountsStringFormat(t *testing.T) {
+	path := writeTempDevcontainer(t, `{
+		"image": "node:22",
+		"mounts": [
+			"source=/host/dir,target=/container/dir,type=bind"
+		]
+	}`)
+
+	dc, err := Parse(path)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(dc.Mounts) != 1 {
+		t.Fatalf("len(Mounts) = %d, want 1", len(dc.Mounts))
+	}
+	expected := Mount{Type: "bind", Source: "/host/dir", Target: "/container/dir"}
+	if dc.Mounts[0] != expected {
+		t.Errorf("Mounts[0] = %+v, want %+v", dc.Mounts[0], expected)
+	}
+}
+
+func TestParse_MountsStringFormatAliases(t *testing.T) {
+	path := writeTempDevcontainer(t, `{
+		"image": "node:22",
+		"mounts": [
+			"src=myvolume,dst=/data,type=volume"
+		]
+	}`)
+
+	dc, err := Parse(path)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(dc.Mounts) != 1 {
+		t.Fatalf("len(Mounts) = %d, want 1", len(dc.Mounts))
+	}
+	expected := Mount{Type: "volume", Source: "myvolume", Target: "/data"}
+	if dc.Mounts[0] != expected {
+		t.Errorf("Mounts[0] = %+v, want %+v", dc.Mounts[0], expected)
+	}
+}
+
+func TestParse_MountsMixedFormats(t *testing.T) {
+	path := writeTempDevcontainer(t, `{
+		"image": "node:22",
+		"mounts": [
+			"source=/host/a,target=/a,type=bind",
+			{"type": "volume", "source": "vol", "target": "/b"}
+		]
+	}`)
+
+	dc, err := Parse(path)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if len(dc.Mounts) != 2 {
+		t.Fatalf("len(Mounts) = %d, want 2", len(dc.Mounts))
+	}
+	expectedFirst := Mount{Type: "bind", Source: "/host/a", Target: "/a"}
+	if dc.Mounts[0] != expectedFirst {
+		t.Errorf("Mounts[0] = %+v, want %+v", dc.Mounts[0], expectedFirst)
+	}
+	expectedSecond := Mount{Type: "volume", Source: "vol", Target: "/b"}
+	if dc.Mounts[1] != expectedSecond {
+		t.Errorf("Mounts[1] = %+v, want %+v", dc.Mounts[1], expectedSecond)
+	}
+}
