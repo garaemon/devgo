@@ -547,3 +547,65 @@ make dev
 make ci
 ```
 
+### Test Coverage
+
+Coverage is computed in-repo — there is no external coverage service.
+`tools/covreport` reads a `go test -coverprofile` profile and renders it as
+either a markdown summary or a self-contained HTML report.
+
+```bash
+# Run tests and write an HTML coverage browser to coverage.html
+make test-coverage
+
+# Print the same markdown summary CI posts on pull requests
+make coverage-report
+
+# HTML report focused on the lines changed since a revision (default: main)
+make coverage-diff BASE=origin/main
+```
+
+`make coverage-diff` renders only the changed hunks plus three lines of
+context; the page holds both views, so the header toggle switches between
+"Changed only" and "All files" without regenerating anything.
+
+#### What the numbers mean
+
+Both percentages are over Go *statements*, as reported by the coverage
+profile — not over lines or branches.
+
+- **Project coverage** — covered statements ÷ total statements across the
+  whole module. On pull requests it is shown alongside the baseline value and
+  the delta.
+- **Patch coverage** — the same ratio restricted to statements on lines the
+  pull request *adds*. Lines that are only deleted or moved do not count, and
+  a change with no coverable added lines reports `n/a`.
+
+Files that are not production code are excluded from both: `*_test.go`, and
+anything under `test/` or `tools/`.
+
+#### How CI reports it
+
+On every pull request the `coverage` job runs the coverage tests on the head
+commit, writes the report to the job summary, and maintains a **single sticky
+comment** on the PR that is updated in place on each push. The job is
+informational — it never fails on a coverage percentage. Pull requests from
+forks get the job summary but no comment, since they have no write token.
+
+#### The `coverage-data` branch
+
+Baselines live on a dedicated orphan branch named **`coverage-data`**, which
+holds nothing but coverage profiles at `profiles/<commit-sha>.out`. It carries
+no project source and is never merged into `main`.
+
+- On every push to `main`, the `record-coverage` job runs the coverage tests
+  once and commits that commit's profile to `coverage-data`. Concurrent pushes
+  are serialized so they cannot clobber each other, and the branch is created
+  as an orphan on the first run.
+- Pull request runs *read* that branch to get their baseline, so they only
+  ever test their own head — the base branch is never re-tested. If the
+  merge-base has no stored profile yet (for example its record run is still in
+  flight), the job walks back along first-parent history up to 50 commits to
+  find the nearest recorded one, and the report labels which commit it used.
+- If no baseline is found at all, the report says "Baseline unavailable" and
+  omits the project delta; patch coverage is unaffected.
+
