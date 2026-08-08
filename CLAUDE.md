@@ -37,6 +37,9 @@ make test-integration
 # Run tests with coverage
 make test-coverage
 
+# Coverage for just the lines changed since a revision
+make coverage-diff BASE=main
+
 # Run linter
 make lint
 
@@ -60,7 +63,13 @@ make help
 
 - **Unit tests**: Test individual packages with mocks
 - **Integration tests**: Test with actual Docker containers and sample devcontainer configs
-- **CI/CD**: GitHub Actions workflow tests on Go 1.20 and 1.21
+- **CI/CD**: GitHub Actions workflow tests on Go 1.21–1.24. A `coverage` job posts a
+  sticky PR comment with project/patch coverage diffs (computed by `tools/covreport`,
+  no external service). Baselines are recorded per main commit on the `coverage-data`
+  branch by the `record-coverage` job, so PR runs test only the head. For an HTML
+  view, run `make test-coverage` locally and open `coverage.html`;
+  `make coverage-diff BASE=<rev>` produces the same file with a diff view
+  (changed hunks plus context) that toggles back to the full listing.
 
 ## Code Style
 

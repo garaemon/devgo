@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -33,28 +36,173 @@ jobs:
     - name: Download dependencies
       run: go mod download
       
-    - name: Run tests with coverage
-      run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
-      
+    - name: Run tests
+      run: go test -v -race ./...
+
     - name: Build
       run: make build
-      
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: ./coverage.out
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
-        
+
     - name: Run basic smoke test
       run: |
         ./devgo --help
 
+  # Computes project and patch coverage for pull requests and maintains a
+  # single sticky PR comment with the results, replacing the old Codecov
+  # upload. Informational only: the job never fails on coverage percentages.
+  coverage:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    # A force-push cancels the run for the old head so a stale run can never
+    # overwrite the comment for the new head.
+    concurrency:
+      group: coverage-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-mod-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run tests with coverage (head)
+      run: go test -coverprofile=coverage.out -covermode=atomic ./...
+
+    # The base profile comes from the coverage-data branch, where the
+    # record-coverage job stores one profile per main commit — no second
+    # test run. If the merge-base itself has no stored profile yet (e.g.
+    # its record run is still in flight), walk back along first-parent
+    # history to the nearest recorded commit.
+    - name: Fetch baseline coverage
+      run: |
+        BASE=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+        echo "BASE=$BASE" >> "$GITHUB_ENV"
+        git fetch origin coverage-data || true
+        if git rev-parse --verify --quiet origin/coverage-data >/dev/null; then
+          for sha in $(git rev-list --first-parent -n 50 "$BASE"); do
+            if git cat-file -e "origin/coverage-data:profiles/${sha}.out" 2>/dev/null; then
+              git show "origin/coverage-data:profiles/${sha}.out" > base-coverage.out
+              echo "BASELINE_SHA=$sha" >> "$GITHUB_ENV"
+              echo "using baseline from $sha"
+              break
+            fi
+          done
+        fi
+        if [ ! -s base-coverage.out ]; then
+          echo "::warning::no stored baseline on coverage-data; project delta will be omitted"
+        fi
+
+    - name: Generate coverage report
+      run: |
+        git diff -U0 "$BASE" HEAD > pr.diff
+        HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+        ARGS="-cover coverage.out -diff pr.diff"
+        ARGS="$ARGS -commit ${HEAD_SHA:0:7}"
+        if [ -s base-coverage.out ]; then
+          ARGS="$ARGS -base-cover base-coverage.out"
+          ARGS="$ARGS -base-name ${{ github.base_ref }}@${BASELINE_SHA:0:7}"
+        fi
+        go run ./tools/covreport $ARGS > coverage-report.md
+        cat coverage-report.md >> "$GITHUB_STEP_SUMMARY"
+
+    # Fork PRs have no write token, so the comment step is skipped there;
+    # the report is still visible in the job summary above.
+    - name: Post sticky PR comment
+      if: github.event.pull_request.head.repo.full_name == github.repository
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const body = fs.readFileSync('coverage-report.md', 'utf8');
+          const marker = '<!-- devgo-coverage-report -->';
+          const {owner, repo} = context.repo;
+          const issue_number = context.issue.number;
+          const comments = await github.paginate(github.rest.issues.listComments,
+            {owner, repo, issue_number, per_page: 100});
+          const existing = comments.find(c => c.body && c.body.includes(marker));
+          if (existing) {
+            await github.rest.issues.updateComment(
+              {owner, repo, comment_id: existing.id, body});
+          } else {
+            await github.rest.issues.createComment({owner, repo, issue_number, body});
+          }
+
+  # Stores the coverage profile of every main commit on the coverage-data
+  # branch (profiles/<sha>.out) so PR coverage runs can diff against a
+  # recorded baseline instead of re-running the tests on the merge-base.
+  record-coverage:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    # Serializes pushes to coverage-data so concurrent main pushes can't
+    # race each other on the branch update.
+    concurrency:
+      group: coverage-data
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-mod-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run tests with coverage
+      run: go test -coverprofile=coverage.out -covermode=atomic ./...
+
+    - name: Record profile on coverage-data branch
+      run: |
+        cp coverage.out /tmp/recorded-coverage.out
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        if git fetch origin coverage-data; then
+          git checkout -B coverage-data origin/coverage-data
+        else
+          git checkout --orphan coverage-data
+          git rm -rf --quiet .
+        fi
+        mkdir -p profiles
+        cp /tmp/recorded-coverage.out "profiles/${GITHUB_SHA}.out"
+        git add profiles
+        git commit -m "Record coverage for ${GITHUB_SHA}"
+        git push origin coverage-data
+
   integration:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
         go-version: ['1.21', '1.22', '1.23', '1.24']
