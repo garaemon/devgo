@@ -564,9 +564,9 @@ make coverage-report
 make coverage-diff BASE=origin/main
 ```
 
-The HTML report has a per-file sidebar and marks covered and uncovered lines
-with tinted backgrounds, replacing the hard-to-read default theme of
-`go tool cover -html`.
+The HTML report has a per-file sidebar, syntax-highlighted Go sources, and
+marks covered and uncovered lines with tinted backgrounds, replacing the
+hard-to-read default theme of `go tool cover -html`.
 
 `make coverage-diff` renders only the changed hunks plus three lines of
 context; the page holds both views, so the header toggle switches between

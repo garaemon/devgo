@@ -161,7 +161,7 @@ type htmlFile struct {
 type htmlLine struct {
 	Num     int
 	Class   string // "", "cov", or "uncov"
-	Text    string
+	Text    template.HTML
 	Added   bool
 	Visible bool
 	Gap     int
@@ -210,7 +210,7 @@ func diffRegions(added []int, totalLines, context int) []region {
 // Uncovered wins over covered when a line spans blocks of both kinds, so red
 // always flags lines that still need a test.
 func annotateFile(rel, src string, blocks []block, added []int, context int) htmlFile {
-	srcLines := strings.Split(src, "\n")
+	srcLines := highlightLines(rel, src)
 	total := len(srcLines)
 
 	classes := make([]string, total+1)
@@ -289,6 +289,8 @@ var htmlTemplate = template.Must(template.New("report").Parse(`<!DOCTYPE html>
   --cov-bg: #e6f4ea; --cov-edge: #1a7f37;
   --uncov-bg: #ffebe9; --uncov-edge: #cf222e;
   --add-bg: #eef4ff; --add-edge: #0969da; --gap-fg: #656d76;
+  --tk-key: #cf222e; --tk-str: #0a3069; --tk-num: #0550ae;
+  --tk-com: #57606a; --tk-bui: #0550ae; --tk-fun: #6639ba;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -297,6 +299,8 @@ var htmlTemplate = template.Must(template.New("report").Parse(`<!DOCTYPE html>
     --cov-bg: #12261e; --cov-edge: #2ea043;
     --uncov-bg: #2d1517; --uncov-edge: #f85149;
     --add-bg: #10203a; --add-edge: #4493f8; --gap-fg: #8d96a0;
+    --tk-key: #ff7b72; --tk-str: #a5d6ff; --tk-num: #79c0ff;
+    --tk-com: #9198a1; --tk-bui: #79c0ff; --tk-fun: #d2a8ff;
   }
 }
 * { box-sizing: border-box; }
@@ -352,7 +356,8 @@ pre {
   margin: 0; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo,
   Consolas, monospace; min-width: max-content; tab-size: 4;
 }
-pre span { display: block; padding: 0 16px 0 0; }
+/* Direct children only: the rows. Token spans nested inside must stay inline. */
+pre > span { display: block; padding: 0 16px 0 0; }
 pre .n {
   display: inline-block; width: 4.5em; text-align: right;
   padding-right: 12px; color: var(--muted); user-select: none;
@@ -364,6 +369,13 @@ pre .g {
 /* Tabs are measured from the start of the line box, so the code must live
    in its own inline-block for indentation to survive the number prefix. */
 pre .t { display: inline-block; white-space: pre; vertical-align: top; }
+/* Syntax colours, chosen to stay legible on the coverage tints. */
+pre .t .k { color: var(--tk-key); }
+pre .t .s { color: var(--tk-str); }
+pre .t .m { color: var(--tk-num); }
+pre .t .b { color: var(--tk-bui); }
+pre .t .f { color: var(--tk-fun); }
+pre .t .c { color: var(--tk-com); font-style: italic; }
 pre .cov { background: var(--cov-bg); box-shadow: inset 3px 0 var(--cov-edge); }
 pre .uncov { background: var(--uncov-bg); box-shadow: inset 3px 0 var(--uncov-edge); }
 pre .gap {
