@@ -3,8 +3,9 @@ name: Test
 on:
   push:
     branches: [ main ]
+  # Every pull request, whatever its base. Restricting this to main would skip
+  # CI entirely on stacked pull requests, which target the branch below them.
   pull_request:
-    branches: [ main ]
 
 permissions:
   contents: read
