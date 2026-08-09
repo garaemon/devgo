@@ -45,12 +45,12 @@ func main() {
 		os.Exit(2)
 	}
 	if *module == "" {
-		m, err := moduleFromGoMod("go.mod")
+		modulePath, err := moduleFromGoMod("go.mod")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "covreport: cannot determine module path: %v\n", err)
 			os.Exit(2)
 		}
-		*module = m
+		*module = modulePath
 	}
 
 	head, err := parseProfile(*coverPath, *module)
@@ -94,8 +94,8 @@ func main() {
 	fmt.Print(renderMarkdown(head, base, added, haveDiff, *module, *commit, *baseName))
 }
 
-func moduleFromGoMod(path string) (string, error) {
-	data, err := os.ReadFile(path)
+func moduleFromGoMod(goModPath string) (string, error) {
+	data, err := os.ReadFile(goModPath)
 	if err != nil {
 		return "", err
 	}
@@ -104,7 +104,7 @@ func moduleFromGoMod(path string) (string, error) {
 			return strings.TrimSpace(rest), nil
 		}
 	}
-	return "", fmt.Errorf("no module directive in %s", path)
+	return "", fmt.Errorf("no module directive in %s", goModPath)
 }
 
 // A coverage profile is the text file written by go test -coverprofile. The
@@ -135,84 +135,122 @@ func moduleFromGoMod(path string) (string, error) {
 //
 // parseProfile reads such a profile, dropping files that are not coverable
 // (tooling under tools/).
-func parseProfile(path, module string) (profile, error) {
-	data, err := os.ReadFile(path)
+func parseProfile(profilePath, module string) (profile, error) {
+	data, err := os.ReadFile(profilePath)
 	if err != nil {
 		return nil, err
 	}
 
-	p := profile{}
-	for i, line := range strings.Split(string(data), "\n") {
+	coverageByFile := profile{}
+	for lineIndex, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "mode:") {
 			continue
 		}
-		file, b, err := parseProfileLine(line)
+		file, coverageBlock, err := parseProfileLine(line)
 		if err != nil {
-			return nil, fmt.Errorf("%s:%d: %v", path, i+1, err)
+			return nil, fmt.Errorf("%s:%d: %v", profilePath, lineIndex+1, err)
 		}
 		if !coverableFile(strings.TrimPrefix(file, module+"/")) {
 			continue
 		}
-		p[file] = append(p[file], b)
+		coverageByFile[file] = append(coverageByFile[file], coverageBlock)
 	}
-	return p, nil
+	return coverageByFile, nil
 }
 
 // parseProfileLine splits one block line into its file name and block. The
 // name is taken as everything before the *last* colon: it is a full import
 // path, so only the trailing position field has a fixed shape.
 func parseProfileLine(line string) (string, block, error) {
-	colon := strings.LastIndex(line, ":")
-	if colon < 0 {
+	lastColon := strings.LastIndex(line, ":")
+	if lastColon < 0 {
 		return "", block{}, fmt.Errorf("malformed profile line %q", line)
 	}
-	file := line[:colon]
-	var sl, sc, el, ec, stmts, count int
-	n, err := fmt.Sscanf(line[colon+1:], "%d.%d,%d.%d %d %d", &sl, &sc, &el, &ec, &stmts, &count)
-	if err != nil || n != 6 {
+	file := line[:lastColon]
+	var startLine, startCol, endLine, endCol, numStmts, count int
+	fieldsScanned, err := fmt.Sscanf(line[lastColon+1:], "%d.%d,%d.%d %d %d",
+		&startLine, &startCol, &endLine, &endCol, &numStmts, &count)
+	if err != nil || fieldsScanned != 6 {
 		return "", block{}, fmt.Errorf("malformed profile line %q", line)
 	}
-	return file, block{startLine: sl, endLine: el, numStmts: stmts, count: count}, nil
+	return file, block{
+		startLine: startLine,
+		endLine:   endLine,
+		numStmts:  numStmts,
+		count:     count,
+	}, nil
 }
 
-// parseDiff extracts the added-line numbers per new-side file path from a
-// unified diff. Only non-test .go files outside test/ are kept.
-func parseDiff(path string) (map[string][]int, error) {
-	data, err := os.ReadFile(path)
+// The diff is the unified-diff text written by git diff -U0. It is a sequence
+// of per-file sections, each a few header lines followed by hunks:
+//
+//	diff --git a/pkg/config/config.go b/pkg/config/config.go
+//	index 1a2b3c4..5d6e7f8 100644
+//	--- a/pkg/config/config.go
+//	+++ b/pkg/config/config.go
+//	@@ -58,0 +59,3 @@ func Load() (*Config, error) {
+//	+	if err := validate(cfg); err != nil {
+//	+		return nil, err
+//	+	}
+//
+// Only two of those line kinds carry what patch coverage needs. The "+++ "
+// line names the file on the new side, normally prefixed with "b/" and
+// possibly followed by a tab and a timestamp; it reads "/dev/null" when the
+// file was deleted, in which case the section adds nothing. Hunk headers have
+// the shape
+//
+//	@@ -<oldStart>[,<oldCount>] +<newStart>[,<newCount>] @@ [section heading]
+//
+// where an omitted count means 1 and a count of 0 means the hunk touches
+// nothing on that side (a pure deletion has "+<newStart>,0").
+//
+// Because -U0 emits no context lines, every line inside a hunk is an added or
+// removed line, so the new-side range of the header *is* the set of added
+// line numbers — the parser reads the headers alone and never looks at hunk
+// bodies. That also means a section with no hunks at all, as produced by a
+// pure rename or mode change, contributes nothing. The flip side of matching
+// on line prefixes is that an added line whose own text starts with "+++ "
+// would be mistaken for a file header; Go sources do not produce such lines
+// in practice.
+//
+// parseDiff extracts the added-line numbers per new-side file path. Only
+// non-test .go files outside test/ are kept.
+func parseDiff(diffPath string) (map[string][]int, error) {
+	data, err := os.ReadFile(diffPath)
 	if err != nil {
 		return nil, err
 	}
-	return parseDiffBytes(data, path)
+	return parseDiffBytes(data, diffPath)
 }
 
 // parseDiffBytes is parseDiff over an in-memory diff; source only names the
 // input in error messages.
 func parseDiffBytes(data []byte, source string) (map[string][]int, error) {
 	added := map[string][]int{}
-	current := ""
+	currentFile := ""
 	for _, line := range strings.Split(string(data), "\n") {
 		switch {
 		case strings.HasPrefix(line, "+++ "):
-			current = ""
+			currentFile = ""
 			name := strings.TrimSpace(strings.TrimPrefix(line, "+++ "))
-			if i := strings.IndexByte(name, '\t'); i >= 0 {
-				name = name[:i]
+			if tabIndex := strings.IndexByte(name, '\t'); tabIndex >= 0 {
+				name = name[:tabIndex]
 			}
 			if name == "/dev/null" {
 				continue
 			}
 			name = strings.TrimPrefix(name, "b/")
 			if coverableFile(name) {
-				current = name
+				currentFile = name
 			}
-		case strings.HasPrefix(line, "@@ ") && current != "":
-			start, count, err := parseHunkHeader(line)
+		case strings.HasPrefix(line, "@@ ") && currentFile != "":
+			startLine, lineCount, err := parseHunkHeader(line)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %v", source, err)
 			}
-			for i := 0; i < count; i++ {
-				added[current] = append(added[current], start+i)
+			for offset := 0; offset < lineCount; offset++ {
+				added[currentFile] = append(added[currentFile], startLine+offset)
 			}
 		}
 	}
@@ -228,26 +266,26 @@ func coverableFile(name string) bool {
 
 // parseHunkHeader returns the new-side start line and line count from a
 // "@@ -a,b +c,d @@" header ("+c" alone means one line, "+c,0" means none).
-func parseHunkHeader(line string) (start, count int, err error) {
+func parseHunkHeader(line string) (startLine, lineCount int, err error) {
 	fields := strings.Fields(line)
-	for _, f := range fields {
-		if !strings.HasPrefix(f, "+") {
+	for _, field := range fields {
+		if !strings.HasPrefix(field, "+") {
 			continue
 		}
-		spec := strings.TrimPrefix(f, "+")
-		count = 1
-		if i := strings.IndexByte(spec, ','); i >= 0 {
-			count, err = strconv.Atoi(spec[i+1:])
+		newSideSpec := strings.TrimPrefix(field, "+")
+		lineCount = 1
+		if commaIndex := strings.IndexByte(newSideSpec, ','); commaIndex >= 0 {
+			lineCount, err = strconv.Atoi(newSideSpec[commaIndex+1:])
 			if err != nil {
 				return 0, 0, fmt.Errorf("malformed hunk header %q", line)
 			}
-			spec = spec[:i]
+			newSideSpec = newSideSpec[:commaIndex]
 		}
-		start, err = strconv.Atoi(spec)
+		startLine, err = strconv.Atoi(newSideSpec)
 		if err != nil {
 			return 0, 0, fmt.Errorf("malformed hunk header %q", line)
 		}
-		return start, count, nil
+		return startLine, lineCount, nil
 	}
 	return 0, 0, fmt.Errorf("malformed hunk header %q", line)
 }
@@ -257,73 +295,74 @@ type tally struct {
 	total   int
 }
 
-func (t tally) percent() float64 {
-	if t.total == 0 {
+func (counts tally) percent() float64 {
+	if counts.total == 0 {
 		return 0
 	}
-	return 100 * float64(t.covered) / float64(t.total)
+	return 100 * float64(counts.covered) / float64(counts.total)
 }
 
-func (t *tally) add(b block) {
-	t.total += b.numStmts
-	if b.count > 0 {
-		t.covered += b.numStmts
+func (counts *tally) add(coverageBlock block) {
+	counts.total += coverageBlock.numStmts
+	if coverageBlock.count > 0 {
+		counts.covered += coverageBlock.numStmts
 	}
 }
 
 // perPackage aggregates a profile into per-package statement tallies.
-func perPackage(p profile) map[string]tally {
-	pkgs := map[string]tally{}
-	for file, blocks := range p {
-		pkg := path.Dir(file)
-		t := pkgs[pkg]
-		for _, b := range blocks {
-			t.add(b)
+func perPackage(coverage profile) map[string]tally {
+	packages := map[string]tally{}
+	for file, blocks := range coverage {
+		packageName := path.Dir(file)
+		packageTally := packages[packageName]
+		for _, coverageBlock := range blocks {
+			packageTally.add(coverageBlock)
 		}
-		pkgs[pkg] = t
+		packages[packageName] = packageTally
 	}
-	return pkgs
+	return packages
 }
 
-func totalTally(p profile) tally {
-	var t tally
-	for _, blocks := range p {
-		for _, b := range blocks {
-			t.add(b)
+func totalTally(coverage profile) tally {
+	var total tally
+	for _, blocks := range coverage {
+		for _, coverageBlock := range blocks {
+			total.add(coverageBlock)
 		}
 	}
-	return t
+	return total
 }
 
-// patchTally computes per-file patch coverage: statements of blocks that
-// overlap added lines, and how many of those statements ran.
+// fileStat is one file's patch coverage: statements of blocks that overlap
+// added lines, how many of those statements ran, and the added lines left
+// uncovered.
 type fileStat struct {
 	file      string
-	t         tally
+	coverage  tally
 	uncovered []int
 }
 
 func patchCoverage(head profile, added map[string][]int, module string) []fileStat {
 	var stats []fileStat
 	files := make([]string, 0, len(added))
-	for f := range added {
-		files = append(files, f)
+	for file := range added {
+		files = append(files, file)
 	}
 	sort.Strings(files)
 
 	for _, file := range files {
-		lines := added[file]
-		lineSet := map[int]bool{}
-		for _, l := range lines {
-			lineSet[l] = true
+		addedLines := added[file]
+		isAddedLine := map[int]bool{}
+		for _, line := range addedLines {
+			isAddedLine[line] = true
 		}
 		blocks := head[module+"/"+file]
-		var st fileStat
-		st.file = file
-		for _, b := range blocks {
+		var stat fileStat
+		stat.file = file
+		for _, coverageBlock := range blocks {
 			touched := false
-			for l := b.startLine; l <= b.endLine; l++ {
-				if lineSet[l] {
+			for line := coverageBlock.startLine; line <= coverageBlock.endLine; line++ {
+				if isAddedLine[line] {
 					touched = true
 					break
 				}
@@ -331,34 +370,34 @@ func patchCoverage(head profile, added map[string][]int, module string) []fileSt
 			if !touched {
 				continue
 			}
-			st.t.add(b)
-			if b.count == 0 {
-				for l := b.startLine; l <= b.endLine; l++ {
-					if lineSet[l] {
-						st.uncovered = append(st.uncovered, l)
+			stat.coverage.add(coverageBlock)
+			if coverageBlock.count == 0 {
+				for line := coverageBlock.startLine; line <= coverageBlock.endLine; line++ {
+					if isAddedLine[line] {
+						stat.uncovered = append(stat.uncovered, line)
 					}
 				}
 			}
 		}
-		if st.t.total > 0 {
-			sort.Ints(st.uncovered)
-			st.uncovered = dedupInts(st.uncovered)
-			stats = append(stats, st)
+		if stat.coverage.total > 0 {
+			sort.Ints(stat.uncovered)
+			stat.uncovered = dedupInts(stat.uncovered)
+			stats = append(stats, stat)
 		}
 	}
 	return stats
 }
 
-func dedupInts(s []int) []int {
-	out := s[:0]
-	prev := -1
-	for _, v := range s {
-		if v != prev {
-			out = append(out, v)
+func dedupInts(sorted []int) []int {
+	deduped := sorted[:0]
+	previous := -1
+	for _, value := range sorted {
+		if value != previous {
+			deduped = append(deduped, value)
 		}
-		prev = v
+		previous = value
 	}
-	return out
+	return deduped
 }
 
 // compressRanges renders sorted line numbers as "12-15, 22".
@@ -375,13 +414,13 @@ func compressRanges(lines []int) string {
 			parts = append(parts, fmt.Sprintf("%d-%d", start, end))
 		}
 	}
-	for _, l := range lines[1:] {
-		if l == end+1 {
-			end = l
+	for _, line := range lines[1:] {
+		if line == end+1 {
+			end = line
 			continue
 		}
 		flush()
-		start, end = l, l
+		start, end = line, line
 	}
 	flush()
 	return strings.Join(parts, ", ")
@@ -396,11 +435,11 @@ func shortPkg(pkg, module string) string {
 
 func renderMarkdown(head, base profile, added map[string][]int, haveDiff bool,
 	module, commit, baseName string) string {
-	var b strings.Builder
-	b.WriteString("<!-- devgo-coverage-report -->\n")
-	b.WriteString("## Coverage report\n\n")
+	var report strings.Builder
+	report.WriteString("<!-- devgo-coverage-report -->\n")
+	report.WriteString("## Coverage report\n\n")
 	if commit != "" {
-		fmt.Fprintf(&b, "Commit: `%s`\n\n", commit)
+		fmt.Fprintf(&report, "Commit: `%s`\n\n", commit)
 	}
 
 	headTotal := totalTally(head)
@@ -416,9 +455,9 @@ func renderMarkdown(head, base profile, added map[string][]int, haveDiff bool,
 	if haveDiff {
 		patchStats = patchCoverage(head, added, module)
 		var patchTotal tally
-		for _, st := range patchStats {
-			patchTotal.covered += st.t.covered
-			patchTotal.total += st.t.total
+		for _, stat := range patchStats {
+			patchTotal.covered += stat.coverage.covered
+			patchTotal.total += stat.coverage.total
 		}
 		if patchTotal.total == 0 {
 			patchLine = "**Patch:** n/a (no coverable changes)"
@@ -428,43 +467,43 @@ func renderMarkdown(head, base profile, added map[string][]int, haveDiff bool,
 		}
 	}
 
-	b.WriteString(projectLine)
+	report.WriteString(projectLine)
 	if patchLine != "" {
-		b.WriteString(" &nbsp;&nbsp; " + patchLine)
+		report.WriteString(" &nbsp;&nbsp; " + patchLine)
 	}
-	b.WriteString("\n\n")
+	report.WriteString("\n\n")
 	if base == nil {
-		b.WriteString("_Baseline unavailable — project delta omitted._\n\n")
+		report.WriteString("_Baseline unavailable — project delta omitted._\n\n")
 	}
 
 	if base != nil {
-		writePackageDelta(&b, head, base, module, baseName)
+		writePackageDelta(&report, head, base, module, baseName)
 	}
 	if len(patchStats) > 0 {
-		writePatchTable(&b, patchStats)
+		writePatchTable(&report, patchStats)
 	}
 
-	b.WriteString("---\n")
-	b.WriteString("To browse the full HTML report locally, check out this branch and run " +
+	report.WriteString("---\n")
+	report.WriteString("To browse the full HTML report locally, check out this branch and run " +
 		"`make test-coverage`, then open `coverage.html`.\n")
-	return b.String()
+	return report.String()
 }
 
-func writePackageDelta(b *strings.Builder, head, base profile, module, baseName string) {
-	headPkgs := perPackage(head)
-	basePkgs := perPackage(base)
-	pkgSet := map[string]bool{}
-	for p := range headPkgs {
-		pkgSet[p] = true
+func writePackageDelta(report *strings.Builder, head, base profile, module, baseName string) {
+	headPackages := perPackage(head)
+	basePackages := perPackage(base)
+	seenPackages := map[string]bool{}
+	for packageName := range headPackages {
+		seenPackages[packageName] = true
 	}
-	for p := range basePkgs {
-		pkgSet[p] = true
+	for packageName := range basePackages {
+		seenPackages[packageName] = true
 	}
-	pkgs := make([]string, 0, len(pkgSet))
-	for p := range pkgSet {
-		pkgs = append(pkgs, p)
+	packages := make([]string, 0, len(seenPackages))
+	for packageName := range seenPackages {
+		packages = append(packages, packageName)
 	}
-	sort.Strings(pkgs)
+	sort.Strings(packages)
 
 	type row struct {
 		name     string
@@ -473,44 +512,46 @@ func writePackageDelta(b *strings.Builder, head, base profile, module, baseName 
 		deltaPct string
 	}
 	var rows []row
-	for _, p := range pkgs {
-		ht, inHead := headPkgs[p]
-		bt, inBase := basePkgs[p]
+	for _, packageName := range packages {
+		headTally, inHead := headPackages[packageName]
+		baseTally, inBase := basePackages[packageName]
 		switch {
 		case inHead && !inBase:
-			rows = append(rows, row{shortPkg(p, module),
-				fmt.Sprintf("%.1f%%", ht.percent()), "—", "new"})
+			rows = append(rows, row{shortPkg(packageName, module),
+				fmt.Sprintf("%.1f%%", headTally.percent()), "—", "new"})
 		case !inHead && inBase:
-			rows = append(rows, row{shortPkg(p, module),
-				"—", fmt.Sprintf("%.1f%%", bt.percent()), "removed"})
-		case ht.percent() != bt.percent():
-			rows = append(rows, row{shortPkg(p, module),
-				fmt.Sprintf("%.1f%%", ht.percent()),
-				fmt.Sprintf("%.1f%%", bt.percent()),
-				fmt.Sprintf("%+.1f%%", ht.percent()-bt.percent())})
+			rows = append(rows, row{shortPkg(packageName, module),
+				"—", fmt.Sprintf("%.1f%%", baseTally.percent()), "removed"})
+		case headTally.percent() != baseTally.percent():
+			rows = append(rows, row{shortPkg(packageName, module),
+				fmt.Sprintf("%.1f%%", headTally.percent()),
+				fmt.Sprintf("%.1f%%", baseTally.percent()),
+				fmt.Sprintf("%+.1f%%", headTally.percent()-baseTally.percent())})
 		}
 	}
 	if len(rows) == 0 {
-		b.WriteString("_No per-package coverage changes._\n\n")
+		report.WriteString("_No per-package coverage changes._\n\n")
 		return
 	}
 
-	b.WriteString("<details>\n<summary>Per-package coverage changes</summary>\n\n")
-	fmt.Fprintf(b, "| Package | HEAD | %s | Δ |\n", baseName)
-	b.WriteString("| --- | ---: | ---: | ---: |\n")
-	for _, r := range rows {
-		fmt.Fprintf(b, "| %s | %s | %s | %s |\n", r.name, r.headPct, r.basePct, r.deltaPct)
+	report.WriteString("<details>\n<summary>Per-package coverage changes</summary>\n\n")
+	fmt.Fprintf(report, "| Package | HEAD | %s | Δ |\n", baseName)
+	report.WriteString("| --- | ---: | ---: | ---: |\n")
+	for _, packageRow := range rows {
+		fmt.Fprintf(report, "| %s | %s | %s | %s |\n",
+			packageRow.name, packageRow.headPct, packageRow.basePct, packageRow.deltaPct)
 	}
-	b.WriteString("\n</details>\n\n")
+	report.WriteString("\n</details>\n\n")
 }
 
-func writePatchTable(b *strings.Builder, stats []fileStat) {
-	b.WriteString("<details>\n<summary>Patch coverage by file</summary>\n\n")
-	b.WriteString("| File | Coverage | Statements | Uncovered new lines |\n")
-	b.WriteString("| --- | ---: | ---: | --- |\n")
-	for _, st := range stats {
-		fmt.Fprintf(b, "| %s | %.1f%% | %d/%d | %s |\n",
-			st.file, st.t.percent(), st.t.covered, st.t.total, compressRanges(st.uncovered))
+func writePatchTable(report *strings.Builder, stats []fileStat) {
+	report.WriteString("<details>\n<summary>Patch coverage by file</summary>\n\n")
+	report.WriteString("| File | Coverage | Statements | Uncovered new lines |\n")
+	report.WriteString("| --- | ---: | ---: | --- |\n")
+	for _, stat := range stats {
+		fmt.Fprintf(report, "| %s | %.1f%% | %d/%d | %s |\n",
+			stat.file, stat.coverage.percent(), stat.coverage.covered, stat.coverage.total,
+			compressRanges(stat.uncovered))
 	}
-	b.WriteString("\n</details>\n\n")
+	report.WriteString("\n</details>\n\n")
 }
