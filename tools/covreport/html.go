@@ -17,38 +17,39 @@ type sourceReader func(rel string) ([]byte, error)
 // the annotated source. It replaces the hard-to-read default theme of
 // `go tool cover -html` and reads sources relative to the working
 // directory, so it must run from the repository root.
-func renderHTML(w io.Writer, p profile, module, commit string, source sourceReader) error {
-	if source == nil {
-		source = func(rel string) ([]byte, error) { return os.ReadFile(rel) }
+func renderHTML(out io.Writer, coverage profile, module, commit string,
+	readSource sourceReader) error {
+	if readSource == nil {
+		readSource = func(relPath string) ([]byte, error) { return os.ReadFile(relPath) }
 	}
 
 	var files []htmlFile
-	paths := make([]string, 0, len(p))
-	for f := range p {
-		paths = append(paths, f)
+	profileKeys := make([]string, 0, len(coverage))
+	for profileKey := range coverage {
+		profileKeys = append(profileKeys, profileKey)
 	}
-	sort.Strings(paths)
+	sort.Strings(profileKeys)
 
-	for _, profPath := range paths {
-		rel := strings.TrimPrefix(profPath, module+"/")
-		src, err := source(rel)
+	for _, profileKey := range profileKeys {
+		relPath := strings.TrimPrefix(profileKey, module+"/")
+		sourceText, err := readSource(relPath)
 		if err != nil {
 			// Sources can be missing when the profile came from another
 			// commit; skip the file rather than failing the whole report.
-			fmt.Fprintf(os.Stderr, "covreport: skipping %s: %v\n", rel, err)
+			fmt.Fprintf(os.Stderr, "covreport: skipping %s: %v\n", relPath, err)
 			continue
 		}
-		files = append(files, annotateFile(rel, string(src), p[profPath]))
+		files = append(files, annotateFile(relPath, string(sourceText), coverage[profileKey]))
 	}
 
-	total := totalTally(p)
+	total := totalTally(coverage)
 	data := htmlData{
 		Module:  module,
 		Commit:  commit,
 		Percent: total.percent(),
 		Files:   files,
 	}
-	return htmlTemplate.Execute(w, data)
+	return htmlTemplate.Execute(out, data)
 }
 
 type htmlData struct {
@@ -74,32 +75,34 @@ type htmlLine struct {
 // annotateFile classifies each source line: uncovered wins over covered
 // when a line spans blocks of both kinds, so red always flags lines that
 // still need a test.
-func annotateFile(rel, src string, blocks []block) htmlFile {
-	srcLines := strings.Split(src, "\n")
-	classes := make([]string, len(srcLines)+1)
-	var t tally
-	for _, b := range blocks {
-		t.add(b)
+func annotateFile(relPath, sourceText string, blocks []block) htmlFile {
+	sourceLines := strings.Split(sourceText, "\n")
+	classByLine := make([]string, len(sourceLines)+1)
+	var fileTally tally
+	for _, coverageBlock := range blocks {
+		fileTally.add(coverageBlock)
 		class := "cov"
-		if b.count == 0 {
+		if coverageBlock.count == 0 {
 			class = "uncov"
 		}
-		for l := b.startLine; l <= b.endLine && l < len(classes); l++ {
-			if classes[l] != "uncov" {
-				classes[l] = class
+		for line := coverageBlock.startLine; line <= coverageBlock.endLine &&
+			line < len(classByLine); line++ {
+			if classByLine[line] != "uncov" {
+				classByLine[line] = class
 			}
 		}
 	}
 
-	f := htmlFile{
-		Path:    rel,
-		ID:      strings.NewReplacer("/", "-", ".", "-").Replace(rel),
-		Percent: t.percent(),
+	file := htmlFile{
+		Path:    relPath,
+		ID:      strings.NewReplacer("/", "-", ".", "-").Replace(relPath),
+		Percent: fileTally.percent(),
 	}
-	for i, text := range srcLines {
-		f.Lines = append(f.Lines, htmlLine{Num: i + 1, Class: classes[i+1], Text: text})
+	for index, text := range sourceLines {
+		file.Lines = append(file.Lines,
+			htmlLine{Num: index + 1, Class: classByLine[index+1], Text: text})
 	}
-	return f
+	return file
 }
 
 var htmlTemplate = template.Must(template.New("report").Parse(`<!DOCTYPE html>
@@ -200,16 +203,18 @@ pre .uncov { background: var(--uncov-bg); box-shadow: inset 3px 0 var(--uncov-ed
 </section>
 {{end}}</main>
 <script>
-const links = document.querySelectorAll('nav a');
-const show = id => {
-  document.querySelectorAll('section').forEach(s =>
-    s.classList.toggle('active', s.id === id));
-  links.forEach(a =>
-    a.classList.toggle('active', a.dataset.target === id));
+const fileLinks = document.querySelectorAll('nav a');
+const showFile = fileId => {
+  document.querySelectorAll('section').forEach(section =>
+    section.classList.toggle('active', section.id === fileId));
+  fileLinks.forEach(link =>
+    link.classList.toggle('active', link.dataset.target === fileId));
 };
-links.forEach(a => a.addEventListener('click', () => show(a.dataset.target)));
-const initial = location.hash.slice(1);
-show(document.getElementById(initial) ? initial : (links[0] && links[0].dataset.target));
+fileLinks.forEach(link =>
+  link.addEventListener('click', () => showFile(link.dataset.target)));
+const initialFile = location.hash.slice(1);
+showFile(document.getElementById(initialFile) ? initialFile
+  : (fileLinks[0] && fileLinks[0].dataset.target));
 </script>
 </body>
 </html>
