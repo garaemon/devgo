@@ -231,8 +231,8 @@ example.com/m/tools/covreport/main.go:12.20,14.3 2 1
 		t.Errorf("parseProfile = %+v, want %+v", got, want)
 	}
 
-	if total := totalTally(got); total.covered != 6 || total.total != 7 {
-		t.Errorf("totalTally = %+v, want 6 covered of 7", total)
+	if total := aggregateTotal(got); total.covered != 6 || total.total != 7 {
+		t.Errorf("aggregateTotal = %+v, want 6 covered of 7", total)
 	}
 }
 
@@ -260,7 +260,7 @@ example.com/m/cmd/up.go:49.16,51.4 1 0
 		if err != nil {
 			t.Fatalf("parseProfile(%q) returned error: %v", header, err)
 		}
-		total := totalTally(parsed)
+		total := aggregateTotal(parsed)
 		if index == 0 {
 			first = total
 			continue
