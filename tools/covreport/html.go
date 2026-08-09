@@ -55,7 +55,7 @@ func renderHTML(out io.Writer, coverage profile, options htmlOptions) error {
 	}
 	sort.Strings(profileKeys)
 
-	tallies := patchTallies(coverage, options.Added, options.Module)
+	tallies := aggregatePatchTallies(coverage, options.Added, options.Module)
 
 	var files []htmlFile
 	changedCount := 0
@@ -89,7 +89,7 @@ func renderHTML(out io.Writer, coverage profile, options htmlOptions) error {
 		files = append(files, file)
 	}
 
-	total := totalTally(coverage)
+	total := aggregateTotal(coverage)
 	data := htmlData{
 		Module:       options.Module,
 		Commit:       options.Commit,
