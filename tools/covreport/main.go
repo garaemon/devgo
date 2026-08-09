@@ -331,8 +331,8 @@ func (counts *tally) add(coverageBlock block) {
 	}
 }
 
-// perPackage aggregates a profile into per-package statement tallies.
-func perPackage(coverage profile) map[string]tally {
+// aggregateByPackage sums a profile into one statement tally per package.
+func aggregateByPackage(coverage profile) map[string]tally {
 	packages := map[string]tally{}
 	for file, blocks := range coverage {
 		packageName := path.Dir(file)
@@ -345,7 +345,9 @@ func perPackage(coverage profile) map[string]tally {
 	return packages
 }
 
-func totalTally(coverage profile) tally {
+// aggregateTotal sums a profile into a single statement tally for the whole
+// module.
+func aggregateTotal(coverage profile) tally {
 	var total tally
 	for _, blocks := range coverage {
 		for _, coverageBlock := range blocks {
@@ -364,7 +366,11 @@ type fileStat struct {
 	uncovered []int
 }
 
-func patchCoverage(head profile, added map[string][]int, module string) []fileStat {
+// aggregatePatchByFile sums the head profile over the added lines of each
+// changed file, in path order. A file is included only when the added lines
+// touch at least one coverable statement, so renames, comment-only edits and
+// changes to non-Go files leave no empty rows in the report.
+func aggregatePatchByFile(head profile, added map[string][]int, module string) []fileStat {
 	var stats []fileStat
 	files := make([]string, 0, len(added))
 	for file := range added {
@@ -464,10 +470,10 @@ func renderMarkdown(head, base profile, added map[string][]int, haveDiff bool,
 		fmt.Fprintf(&report, "Commit: `%s`\n\n", commit)
 	}
 
-	headTotal := totalTally(head)
+	headTotal := aggregateTotal(head)
 	projectLine := fmt.Sprintf("**Project:** %.1f%%", headTotal.percent())
 	if base != nil {
-		baseTotal := totalTally(base)
+		baseTotal := aggregateTotal(base)
 		delta := headTotal.percent() - baseTotal.percent()
 		projectLine += fmt.Sprintf(" (%s: %.1f%%, %+.1f%%)", baseName, baseTotal.percent(), delta)
 	}
@@ -475,7 +481,7 @@ func renderMarkdown(head, base profile, added map[string][]int, haveDiff bool,
 	patchLine := ""
 	var patchStats []fileStat
 	if haveDiff {
-		patchStats = patchCoverage(head, added, module)
+		patchStats = aggregatePatchByFile(head, added, module)
 		var patchTotal tally
 		for _, stat := range patchStats {
 			patchTotal.covered += stat.coverage.covered
@@ -512,8 +518,8 @@ func renderMarkdown(head, base profile, added map[string][]int, haveDiff bool,
 }
 
 func writePackageDelta(report *strings.Builder, head, base profile, module, baseName string) {
-	headPackages := perPackage(head)
-	basePackages := perPackage(base)
+	headPackages := aggregateByPackage(head)
+	basePackages := aggregateByPackage(base)
 	seenPackages := map[string]bool{}
 	for packageName := range headPackages {
 		seenPackages[packageName] = true
