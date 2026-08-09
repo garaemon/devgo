@@ -388,7 +388,7 @@ func TestHighlightLinesFallback(t *testing.T) {
 	}
 }
 
-func TestPatchTallies(t *testing.T) {
+func TestAggregatePatchTallies(t *testing.T) {
 	const module = "example.com/m"
 	head := profile{
 		module + "/cmd/a.go": {
@@ -402,7 +402,7 @@ func TestPatchTallies(t *testing.T) {
 		"cmd/b.go": {3}, // changed but absent from the profile
 	}
 
-	got := patchTallies(head, added, module)
+	got := aggregatePatchTallies(head, added, module)
 
 	if want := (tally{covered: 2, total: 5}); got["cmd/a.go"] != want {
 		t.Errorf("cmd/a.go tally = %+v, want %+v", got["cmd/a.go"], want)
@@ -415,16 +415,16 @@ func TestPatchTallies(t *testing.T) {
 	}
 }
 
-func TestPatchCoverageDropsEmptyFiles(t *testing.T) {
+func TestAggregatePatchByFileDropsEmptyFiles(t *testing.T) {
 	const module = "example.com/m"
 	head := profile{
 		module + "/cmd/a.go": {{startLine: 10, endLine: 12, numStmts: 2, count: 1}},
 	}
 	added := map[string][]int{"cmd/a.go": {11}, "cmd/b.go": {3}}
 
-	stats := patchCoverage(head, added, module)
+	stats := aggregatePatchByFile(head, added, module)
 	if len(stats) != 1 || stats[0].file != "cmd/a.go" {
-		t.Fatalf("patchCoverage = %+v, want only cmd/a.go", stats)
+		t.Fatalf("aggregatePatchByFile = %+v, want only cmd/a.go", stats)
 	}
 }
 
@@ -635,8 +635,8 @@ example.com/m/tools/covreport/main.go:12.20,14.3 2 1
 		t.Errorf("parseProfile = %+v, want %+v", got, want)
 	}
 
-	if total := totalTally(got); total.covered != 6 || total.total != 7 {
-		t.Errorf("totalTally = %+v, want 6 covered of 7", total)
+	if total := aggregateTotal(got); total.covered != 6 || total.total != 7 {
+		t.Errorf("aggregateTotal = %+v, want 6 covered of 7", total)
 	}
 }
 
@@ -664,7 +664,7 @@ example.com/m/cmd/up.go:49.16,51.4 1 0
 		if err != nil {
 			t.Fatalf("parseProfile(%q) returned error: %v", header, err)
 		}
-		total := totalTally(parsed)
+		total := aggregateTotal(parsed)
 		if index == 0 {
 			first = total
 			continue
