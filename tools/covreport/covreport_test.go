@@ -125,34 +125,34 @@ func TestPatchCoverageDropsEmptyFiles(t *testing.T) {
 
 // source20 builds a 20-line file so line numbers match their content.
 func source20() string {
-	var b strings.Builder
-	for i := 1; i <= 20; i++ {
-		fmt.Fprintf(&b, "line %d\n", i)
+	var source strings.Builder
+	for lineNumber := 1; lineNumber <= 20; lineNumber++ {
+		fmt.Fprintf(&source, "line %d\n", lineNumber)
 	}
 	// Trailing newline yields a final empty element, as os.ReadFile would.
-	return strings.TrimSuffix(b.String(), "\n")
+	return strings.TrimSuffix(source.String(), "\n")
 }
 
 func TestAnnotateFile(t *testing.T) {
 	blocks := []block{{startLine: 5, endLine: 6, numStmts: 2, count: 1}}
-	f := annotateFile("cmd/x.go", source20(), blocks)
+	file := annotateFile("cmd/x.go", source20(), blocks)
 
-	if len(f.Lines) != 20 {
-		t.Fatalf("got %d rows, want 20", len(f.Lines))
+	if len(file.Lines) != 20 {
+		t.Fatalf("got %d rows, want 20", len(file.Lines))
 	}
-	for i, l := range f.Lines {
-		if l.Num != i+1 {
-			t.Fatalf("row %d has line number %d", i, l.Num)
+	for index, row := range file.Lines {
+		if row.Num != index+1 {
+			t.Fatalf("row %d has line number %d", index, row.Num)
 		}
 	}
-	if f.Lines[4].Class != "cov" || f.Lines[5].Class != "cov" {
-		t.Errorf("lines 5-6 should be covered: %+v", f.Lines[4:6])
+	if file.Lines[4].Class != "cov" || file.Lines[5].Class != "cov" {
+		t.Errorf("lines 5-6 should be covered: %+v", file.Lines[4:6])
 	}
-	if f.Lines[6].Class != "" {
-		t.Errorf("line 7 is outside every block, got class %q", f.Lines[6].Class)
+	if file.Lines[6].Class != "" {
+		t.Errorf("line 7 is outside every block, got class %q", file.Lines[6].Class)
 	}
-	if f.ID != "cmd-x-go" {
-		t.Errorf("ID = %q, want cmd-x-go", f.ID)
+	if file.ID != "cmd-x-go" {
+		t.Errorf("ID = %q, want cmd-x-go", file.ID)
 	}
 }
 
@@ -163,8 +163,8 @@ func TestAnnotateFileUncoveredWins(t *testing.T) {
 		{startLine: 5, endLine: 7, numStmts: 3, count: 4},
 		{startLine: 6, endLine: 6, numStmts: 1, count: 0},
 	}
-	f := annotateFile("cmd/x.go", source20(), blocks)
-	if got := f.Lines[5].Class; got != "uncov" {
+	file := annotateFile("cmd/x.go", source20(), blocks)
+	if got := file.Lines[5].Class; got != "uncov" {
 		t.Errorf("line 6 class = %q, want uncov", got)
 	}
 }
@@ -174,13 +174,13 @@ func TestRenderHTML(t *testing.T) {
 	head := profile{
 		module + "/cmd/a.go": {{startLine: 5, endLine: 6, numStmts: 2, count: 1}},
 	}
-	source := func(rel string) ([]byte, error) { return []byte(source20()), nil }
+	readSource := func(relPath string) ([]byte, error) { return []byte(source20()), nil }
 
-	var buf bytes.Buffer
-	if err := renderHTML(&buf, head, module, "abc1234", source); err != nil {
+	var rendered bytes.Buffer
+	if err := renderHTML(&rendered, head, module, "abc1234", readSource); err != nil {
 		t.Fatalf("renderHTML returned error: %v", err)
 	}
-	out := buf.String()
+	page := rendered.String()
 
 	for _, want := range []string{
 		`<title>example.com/m coverage</title>`,
@@ -188,7 +188,7 @@ func TestRenderHTML(t *testing.T) {
 		`href="#cmd-a-go"`,
 		`<span class="cov">`,
 	} {
-		if !strings.Contains(out, want) {
+		if !strings.Contains(page, want) {
 			t.Errorf("report should contain %q", want)
 		}
 	}
