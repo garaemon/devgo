@@ -14,15 +14,15 @@ func runGit(args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	stdout, err := cmd.Output()
 	if err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = err.Error()
 		}
-		return nil, fmt.Errorf("git %s: %s", strings.Join(args, " "), msg)
+		return nil, fmt.Errorf("git %s: %s", strings.Join(args, " "), message)
 	}
-	return out, nil
+	return stdout, nil
 }
 
 // gitDiff produces the unified diff parseDiffBytes expects. An empty head
@@ -40,8 +40,9 @@ func gitDiff(base, head string) ([]byte, error) {
 	return runGit(args...)
 }
 
-// gitShow returns a file's contents at rev. path is repository-relative, so
-// covreport must run from the repository root, as renderHTML already requires.
-func gitShow(rev, path string) ([]byte, error) {
-	return runGit("show", rev+":"+path)
+// gitShow returns a file's contents at revision. relPath is
+// repository-relative, so covreport must run from the repository root, as
+// renderHTML already requires.
+func gitShow(revision, relPath string) ([]byte, error) {
+	return runGit("show", revision+":"+relPath)
 }

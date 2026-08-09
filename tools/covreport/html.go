@@ -10,7 +10,7 @@ import (
 )
 
 // sourceReader returns the contents of a repository-relative source file.
-type sourceReader func(rel string) ([]byte, error)
+type sourceReader func(relPath string) ([]byte, error)
 
 // htmlOptions configures renderHTML. When Added is non-empty the report gains
 // a diff view alongside the full listing, toggled client-side.
@@ -33,99 +33,100 @@ type htmlOptions struct {
 // When a diff is supplied the page carries both views — the changed hunks with
 // surrounding context, and the complete listing — and switches between them by
 // toggling a class on <body>, so the source text is emitted only once.
-func renderHTML(w io.Writer, p profile, opts htmlOptions) error {
-	if opts.Source == nil {
-		opts.Source = func(rel string) ([]byte, error) { return os.ReadFile(rel) }
+func renderHTML(out io.Writer, coverage profile, options htmlOptions) error {
+	if options.Source == nil {
+		options.Source = func(relPath string) ([]byte, error) { return os.ReadFile(relPath) }
 	}
 
 	// Changed files that never appear in the profile still belong in the
 	// report, so the path set is the union of both sides.
-	paths := map[string]bool{}
-	for f := range p {
-		paths[f] = true
+	inReport := map[string]bool{}
+	for profileKey := range coverage {
+		inReport[profileKey] = true
 	}
-	if opts.HaveDiff {
-		for f := range opts.Added {
-			paths[opts.Module+"/"+f] = true
+	if options.HaveDiff {
+		for changedFile := range options.Added {
+			inReport[options.Module+"/"+changedFile] = true
 		}
 	}
-	sorted := make([]string, 0, len(paths))
-	for f := range paths {
-		sorted = append(sorted, f)
+	profileKeys := make([]string, 0, len(inReport))
+	for profileKey := range inReport {
+		profileKeys = append(profileKeys, profileKey)
 	}
-	sort.Strings(sorted)
+	sort.Strings(profileKeys)
 
-	tallies := patchTallies(p, opts.Added, opts.Module)
+	tallies := patchTallies(coverage, options.Added, options.Module)
 
 	var files []htmlFile
-	changed := 0
-	for _, profPath := range sorted {
-		rel := strings.TrimPrefix(profPath, opts.Module+"/")
-		src, err := opts.Source(rel)
+	changedCount := 0
+	for _, profileKey := range profileKeys {
+		relPath := strings.TrimPrefix(profileKey, options.Module+"/")
+		sourceText, err := options.Source(relPath)
 		if err != nil {
 			// Sources can be missing when the profile came from another
 			// commit; skip the file rather than failing the whole report.
-			fmt.Fprintf(os.Stderr, "covreport: skipping %s: %v\n", rel, err)
+			fmt.Fprintf(os.Stderr, "covreport: skipping %s: %v\n", relPath, err)
 			continue
 		}
-		added := opts.Added[rel]
-		sort.Ints(added)
-		added = dedupInts(added)
+		addedLines := options.Added[relPath]
+		sort.Ints(addedLines)
+		addedLines = dedupInts(addedLines)
 
-		f := annotateFile(rel, string(src), p[profPath], added, opts.Context)
-		if f.Changed {
-			changed++
+		file := annotateFile(relPath, string(sourceText), coverage[profileKey],
+			addedLines, options.Context)
+		if file.Changed {
+			changedCount++
 			// Patch numbers come from the profile, not the annotated source,
 			// so the header always matches the markdown report.
-			t := tallies[rel]
-			f.PatchCovered, f.PatchTotal = t.covered, t.total
-			f.PatchPercent = t.percent()
+			patchTally := tallies[relPath]
+			file.PatchCovered, file.PatchTotal = patchTally.covered, patchTally.total
+			file.PatchPercent = patchTally.percent()
 		}
-		f.PatchLabel = "n/a"
-		if f.PatchTotal > 0 {
-			f.PatchLabel = fmt.Sprintf("%.1f%%", f.PatchPercent)
+		file.PatchLabel = "n/a"
+		if file.PatchTotal > 0 {
+			file.PatchLabel = fmt.Sprintf("%.1f%%", file.PatchPercent)
 		}
-		files = append(files, f)
+		files = append(files, file)
 	}
 
-	total := totalTally(p)
+	total := totalTally(coverage)
 	data := htmlData{
-		Module:       opts.Module,
-		Commit:       opts.Commit,
+		Module:       options.Module,
+		Commit:       options.Commit,
 		Percent:      total.percent(),
-		Diff:         opts.HaveDiff,
+		Diff:         options.HaveDiff,
 		BodyClass:    "mode-all",
-		RangeLabel:   rangeLabel(opts),
+		RangeLabel:   rangeLabel(options),
 		PatchLabel:   "n/a",
-		ChangedFiles: changed,
+		ChangedFiles: changedCount,
 		Files:        files,
 	}
-	if opts.HaveDiff && changed > 0 {
+	if options.HaveDiff && changedCount > 0 {
 		data.BodyClass = "mode-diff"
 	}
-	var patch tally
-	for _, f := range files {
-		patch.covered += f.PatchCovered
-		patch.total += f.PatchTotal
+	var patchTotal tally
+	for _, file := range files {
+		patchTotal.covered += file.PatchCovered
+		patchTotal.total += file.PatchTotal
 	}
-	if patch.total > 0 {
+	if patchTotal.total > 0 {
 		data.PatchLabel = fmt.Sprintf("%.1f%% (%d/%d statements)",
-			patch.percent(), patch.covered, patch.total)
+			patchTotal.percent(), patchTotal.covered, patchTotal.total)
 	}
-	return htmlTemplate.Execute(w, data)
+	return htmlTemplate.Execute(out, data)
 }
 
 // rangeLabel describes what the diff was taken against, for the header.
-func rangeLabel(opts htmlOptions) string {
+func rangeLabel(options htmlOptions) string {
 	switch {
-	case opts.DiffBase != "":
-		head := opts.DiffHead
+	case options.DiffBase != "":
+		head := options.DiffHead
 		if head == "" {
 			head = "working tree"
 		}
-		return opts.DiffBase + " … " + head
-	case opts.DiffFile != "":
-		return opts.DiffFile
+		return options.DiffBase + " … " + head
+	case options.DiffFile != "":
+		return options.DiffFile
 	}
 	return ""
 }
@@ -172,108 +173,114 @@ type region struct{ start, end int }
 
 // diffRegions returns the line runs visible in the diff view: every added line
 // grown by context lines on each side, clamped to [1,totalLines] and merged
-// when the expanded runs touch or overlap. added must be sorted and deduped.
-func diffRegions(added []int, totalLines, context int) []region {
-	if totalLines <= 0 || len(added) == 0 {
+// when the expanded runs touch or overlap. addedLines must be sorted and
+// deduped.
+func diffRegions(addedLines []int, totalLines, context int) []region {
+	if totalLines <= 0 || len(addedLines) == 0 {
 		return nil
 	}
 	if context < 0 {
 		context = 0
 	}
-	var out []region
-	for _, l := range added {
-		if l < 1 || l > totalLines {
+	var regions []region
+	for _, line := range addedLines {
+		if line < 1 || line > totalLines {
 			continue // profile/source skew, or a line past EOF
 		}
-		s, e := l-context, l+context
-		if s < 1 {
-			s = 1
+		start, end := line-context, line+context
+		if start < 1 {
+			start = 1
 		}
-		if e > totalLines {
-			e = totalLines
+		if end > totalLines {
+			end = totalLines
 		}
 		// Merge on touching, not just overlapping, so no "0 lines" separator
 		// is ever emitted between adjacent windows.
-		if n := len(out); n > 0 && s <= out[n-1].end+1 {
-			if e > out[n-1].end {
-				out[n-1].end = e
+		if count := len(regions); count > 0 && start <= regions[count-1].end+1 {
+			if end > regions[count-1].end {
+				regions[count-1].end = end
 			}
 			continue
 		}
-		out = append(out, region{s, e})
+		regions = append(regions, region{start, end})
 	}
-	return out
+	return regions
 }
 
-// annotateFile classifies each source line and, when added is non-empty, marks
-// the diff-view context windows and inserts elision separators between them.
-// Uncovered wins over covered when a line spans blocks of both kinds, so red
-// always flags lines that still need a test.
-func annotateFile(rel, src string, blocks []block, added []int, context int) htmlFile {
-	srcLines := highlightLines(rel, src)
-	total := len(srcLines)
+// annotateFile classifies each source line and, when addedLines is non-empty,
+// marks the diff-view context windows and inserts elision separators between
+// them. Uncovered wins over covered when a line spans blocks of both kinds, so
+// red always flags lines that still need a test.
+func annotateFile(relPath, sourceText string, blocks []block,
+	addedLines []int, context int) htmlFile {
+	sourceLines := highlightLines(relPath, sourceText)
+	totalLines := len(sourceLines)
 
-	classes := make([]string, total+1)
-	var t tally
-	for _, b := range blocks {
-		t.add(b)
+	classByLine := make([]string, totalLines+1)
+	var fileTally tally
+	for _, coverageBlock := range blocks {
+		fileTally.add(coverageBlock)
 		class := "cov"
-		if b.count == 0 {
+		if coverageBlock.count == 0 {
 			class = "uncov"
 		}
-		for l := b.startLine; l <= b.endLine && l < len(classes); l++ {
-			if classes[l] != "uncov" {
-				classes[l] = class
+		for line := coverageBlock.startLine; line <= coverageBlock.endLine &&
+			line < len(classByLine); line++ {
+			if classByLine[line] != "uncov" {
+				classByLine[line] = class
 			}
 		}
 	}
 
-	f := htmlFile{
-		Path:    rel,
-		ID:      strings.NewReplacer("/", "-", ".", "-").Replace(rel),
-		Percent: t.percent(),
-		Changed: len(added) > 0,
+	file := htmlFile{
+		Path:    relPath,
+		ID:      strings.NewReplacer("/", "-", ".", "-").Replace(relPath),
+		Percent: fileTally.percent(),
+		Changed: len(addedLines) > 0,
 	}
 
-	addedSet := map[int]bool{}
-	visible := make([]bool, total+1)
-	if !f.Changed {
-		for i := range visible {
-			visible[i] = true
+	isAddedLine := map[int]bool{}
+	isVisible := make([]bool, totalLines+1)
+	if !file.Changed {
+		for index := range isVisible {
+			isVisible[index] = true
 		}
 	} else {
-		for _, l := range added {
-			addedSet[l] = true
+		for _, line := range addedLines {
+			isAddedLine[line] = true
 		}
-		for _, r := range diffRegions(added, total, context) {
-			for l := r.start; l <= r.end; l++ {
-				visible[l] = true
+		for _, visibleRegion := range diffRegions(addedLines, totalLines, context) {
+			for line := visibleRegion.start; line <= visibleRegion.end; line++ {
+				isVisible[line] = true
 			}
 		}
 	}
 
 	// Hidden lines stay in the slice — they are what the all-files view
 	// renders — and only the separator rows are new.
-	hidden := 0
-	for i, text := range srcLines {
-		n := i + 1
-		if !visible[n] {
-			hidden++
-			f.Lines = append(f.Lines, htmlLine{Num: n, Class: classes[n], Text: text})
+	hiddenCount := 0
+	for index, text := range sourceLines {
+		lineNumber := index + 1
+		if !isVisible[lineNumber] {
+			hiddenCount++
+			file.Lines = append(file.Lines, htmlLine{
+				Num: lineNumber, Class: classByLine[lineNumber], Text: text,
+			})
 			continue
 		}
-		if hidden > 0 {
-			f.Lines = append(f.Lines, htmlLine{Gap: hidden})
-			hidden = 0
+		if hiddenCount > 0 {
+			file.Lines = append(file.Lines, htmlLine{Gap: hiddenCount})
+			hiddenCount = 0
 		}
-		f.Lines = append(f.Lines, htmlLine{
-			Num: n, Class: classes[n], Text: text, Added: addedSet[n], Visible: true,
+		file.Lines = append(file.Lines, htmlLine{
+			Num: lineNumber, Class: classByLine[lineNumber], Text: text,
+			Added: isAddedLine[lineNumber], Visible: true,
 		})
 	}
-	if hidden > 0 {
-		f.Lines = append(f.Lines, htmlLine{Gap: hidden})
+	if hiddenCount > 0 {
+		file.Lines = append(file.Lines, htmlLine{Gap: hiddenCount})
 	}
-	return f
+	return file
 }
 
 var htmlTemplate = template.Must(template.New("report").Parse(`<!DOCTYPE html>
@@ -439,32 +446,34 @@ body.mode-diff section:not(.changed) { display: none !important; }
 </section>
 {{end}}{{if .Diff}}<p class="empty diff-only"{{if .ChangedFiles}} hidden{{end}}>No coverable changes in {{.RangeLabel}}.</p>{{end}}</main>
 <script>
-const links = document.querySelectorAll('nav a');
-const show = id => {
-  document.querySelectorAll('section').forEach(s =>
-    s.classList.toggle('active', s.id === id));
-  links.forEach(a =>
-    a.classList.toggle('active', a.dataset.target === id));
+const fileLinks = document.querySelectorAll('nav a');
+const showFile = fileId => {
+  document.querySelectorAll('section').forEach(section =>
+    section.classList.toggle('active', section.id === fileId));
+  fileLinks.forEach(link =>
+    link.classList.toggle('active', link.dataset.target === fileId));
 };
-links.forEach(a => a.addEventListener('click', () => show(a.dataset.target)));
-const initial = location.hash.slice(1);
-show(document.getElementById(initial) ? initial : (links[0] && links[0].dataset.target));
-const setMode = m => {
-  document.body.classList.toggle('mode-diff', m === 'diff');
-  document.body.classList.toggle('mode-all', m !== 'diff');
-  document.querySelectorAll('.modes button').forEach(b =>
-    b.classList.toggle('active', b.dataset.mode === m));
+fileLinks.forEach(link =>
+  link.addEventListener('click', () => showFile(link.dataset.target)));
+const initialFile = location.hash.slice(1);
+showFile(document.getElementById(initialFile) ? initialFile
+  : (fileLinks[0] && fileLinks[0].dataset.target));
+const setMode = mode => {
+  document.body.classList.toggle('mode-diff', mode === 'diff');
+  document.body.classList.toggle('mode-all', mode !== 'diff');
+  document.querySelectorAll('.modes button').forEach(button =>
+    button.classList.toggle('active', button.dataset.mode === mode));
   // The deep-linked or previously selected file may not exist in the new
   // mode; fall back to the first one that does.
-  const sel = m === 'diff' ? 'nav a.changed' : 'nav a';
-  const active = document.querySelector('nav a.active');
-  if (!active || !active.matches(sel)) {
-    const first = document.querySelector(sel);
-    if (first) show(first.dataset.target);
+  const selector = mode === 'diff' ? 'nav a.changed' : 'nav a';
+  const activeLink = document.querySelector('nav a.active');
+  if (!activeLink || !activeLink.matches(selector)) {
+    const firstLink = document.querySelector(selector);
+    if (firstLink) showFile(firstLink.dataset.target);
   }
 };
-document.querySelectorAll('.modes button').forEach(b =>
-  b.addEventListener('click', () => setMode(b.dataset.mode)));
+document.querySelectorAll('.modes button').forEach(button =>
+  button.addEventListener('click', () => setMode(button.dataset.mode)));
 setMode(document.body.classList.contains('mode-diff') ? 'diff' : 'all');
 </script>
 </body>

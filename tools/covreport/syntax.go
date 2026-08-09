@@ -46,30 +46,30 @@ type tokenSpan struct {
 // strings.Split(src, "\n") element for element. Go sources get their tokens
 // wrapped in class spans; anything else — and any source the scanner chokes
 // on — falls back to plain escaped text.
-func highlightLines(rel, src string) []template.HTML {
-	if !strings.HasSuffix(rel, ".go") {
-		return plainLines(src)
+func highlightLines(relPath, sourceText string) []template.HTML {
+	if !strings.HasSuffix(relPath, ".go") {
+		return plainLines(sourceText)
 	}
-	spans, ok := goTokenSpans(src)
+	spans, ok := goTokenSpans(sourceText)
 	if !ok {
-		return plainLines(src)
+		return plainLines(sourceText)
 	}
-	return assembleLines(src, spans)
+	return assembleLines(sourceText, spans)
 }
 
-func plainLines(src string) []template.HTML {
-	raw := strings.Split(src, "\n")
-	out := make([]template.HTML, len(raw))
-	for i, l := range raw {
-		out[i] = template.HTML(template.HTMLEscapeString(l))
+func plainLines(sourceText string) []template.HTML {
+	sourceLines := strings.Split(sourceText, "\n")
+	escaped := make([]template.HTML, len(sourceLines))
+	for index, line := range sourceLines {
+		escaped[index] = template.HTML(template.HTMLEscapeString(line))
 	}
-	return out
+	return escaped
 }
 
 // scanned is one token, with the source range it actually occupies.
 type scanned struct {
 	tok        token.Token
-	lit        string
+	literal    string
 	start, end int
 }
 
@@ -77,85 +77,87 @@ type scanned struct {
 // source order and never overlapping. It reports false when the scanner
 // finds a syntax error, so a source that cannot be tokenized cleanly renders
 // as plain text instead of being mis-coloured.
-func goTokenSpans(src string) ([]tokenSpan, bool) {
-	toks, ok := scanTokens(src)
+func goTokenSpans(sourceText string) ([]tokenSpan, bool) {
+	tokens, ok := scanTokens(sourceText)
 	if !ok {
 		return nil, false
 	}
-	names := funcNameIndexes(toks)
+	isFuncName := funcNameIndexes(tokens)
 
-	spans := make([]tokenSpan, 0, len(toks))
-	for i, t := range toks {
+	spans := make([]tokenSpan, 0, len(tokens))
+	for index, scannedToken := range tokens {
 		class := ""
 		switch {
-		case t.tok == token.COMMENT:
+		case scannedToken.tok == token.COMMENT:
 			class = classComment
-		case t.tok == token.STRING, t.tok == token.CHAR:
+		case scannedToken.tok == token.STRING, scannedToken.tok == token.CHAR:
 			class = classString
-		case t.tok == token.INT, t.tok == token.FLOAT, t.tok == token.IMAG:
+		case scannedToken.tok == token.INT, scannedToken.tok == token.FLOAT,
+			scannedToken.tok == token.IMAG:
 			class = classNumber
-		case t.tok.IsKeyword():
+		case scannedToken.tok.IsKeyword():
 			class = classKeyword
-		case names[i]:
+		case isFuncName[index]:
 			class = classFuncName
-		case t.tok == token.IDENT && predeclared[t.lit]:
+		case scannedToken.tok == token.IDENT && predeclared[scannedToken.literal]:
 			class = classPredeclare
 		}
 		if class == "" {
 			continue
 		}
-		spans = append(spans, tokenSpan{t.start, t.end, class})
+		spans = append(spans, tokenSpan{scannedToken.start, scannedToken.end, class})
 	}
 	return spans, true
 }
 
-func scanTokens(src string) ([]scanned, bool) {
-	fset := token.NewFileSet()
-	file := fset.AddFile("", fset.Base(), len(src))
+func scanTokens(sourceText string) ([]scanned, bool) {
+	fileSet := token.NewFileSet()
+	file := fileSet.AddFile("", fileSet.Base(), len(sourceText))
 
-	bad := false
-	var s scanner.Scanner
-	s.Init(file, []byte(src), func(token.Position, string) { bad = true }, scanner.ScanComments)
+	sawError := false
+	var goScanner scanner.Scanner
+	goScanner.Init(file, []byte(sourceText),
+		func(token.Position, string) { sawError = true }, scanner.ScanComments)
 
-	var toks []scanned
+	var tokens []scanned
 	for {
-		pos, tok, lit := s.Scan()
-		if tok == token.EOF || bad {
+		position, tok, literal := goScanner.Scan()
+		if tok == token.EOF || sawError {
 			break
 		}
 		// Semicolons the scanner inserts at end of line are not in the source.
-		if tok == token.SEMICOLON && lit == "\n" {
+		if tok == token.SEMICOLON && literal == "\n" {
 			continue
 		}
 
-		text := lit
+		text := literal
 		if text == "" {
 			text = tok.String()
 		}
-		start := file.Offset(pos)
+		start := file.Offset(position)
 		end := start + len(text)
 		if tok == token.COMMENT {
 			// Comment literals have carriage returns stripped, so their length
 			// can disagree with the source; measure the delimiters instead.
-			end = commentEnd(src, start)
+			end = commentEnd(sourceText, start)
 		}
-		if start < 0 || start >= len(src) || end <= start {
+		if start < 0 || start >= len(sourceText) || end <= start {
 			continue
 		}
-		if end > len(src) {
-			end = len(src)
+		if end > len(sourceText) {
+			end = len(sourceText)
 		}
 		// A literal whose reported length undershot the source would otherwise
 		// leave this token's range running into the previous one.
-		if n := len(toks); n > 0 && toks[n-1].end > start {
-			toks[n-1].end = start
+		if count := len(tokens); count > 0 && tokens[count-1].end > start {
+			tokens[count-1].end = start
 		}
-		toks = append(toks, scanned{tok, lit, start, end})
+		tokens = append(tokens, scanned{tok, literal, start, end})
 	}
-	if bad {
+	if sawError {
 		return nil, false
 	}
-	return toks, true
+	return tokens, true
 }
 
 // funcNameIndexes marks the identifiers that name a declared function or
@@ -163,98 +165,100 @@ func scanTokens(src string) ([]scanned, bool) {
 // parenthesized receiver — and is always followed by the parameter list, or
 // by a type parameter list. That last check is what keeps the return type of
 // a func *type* (`var f func(int) int`) from being mistaken for a name.
-func funcNameIndexes(toks []scanned) map[int]bool {
-	names := map[int]bool{}
-	for i, t := range toks {
-		if t.tok != token.FUNC {
+func funcNameIndexes(tokens []scanned) map[int]bool {
+	isFuncName := map[int]bool{}
+	for index, scannedToken := range tokens {
+		if scannedToken.tok != token.FUNC {
 			continue
 		}
-		j := i + 1
-		if j < len(toks) && toks[j].tok == token.LPAREN {
-			j = skipParens(toks, j)
+		nameIndex := index + 1
+		if nameIndex < len(tokens) && tokens[nameIndex].tok == token.LPAREN {
+			nameIndex = skipParens(tokens, nameIndex)
 		}
-		if j+1 >= len(toks) || toks[j].tok != token.IDENT {
+		if nameIndex+1 >= len(tokens) || tokens[nameIndex].tok != token.IDENT {
 			continue
 		}
-		if next := toks[j+1].tok; next == token.LPAREN || next == token.LBRACK {
-			names[j] = true
+		next := tokens[nameIndex+1].tok
+		if next == token.LPAREN || next == token.LBRACK {
+			isFuncName[nameIndex] = true
 		}
 	}
-	return names
+	return isFuncName
 }
 
-// skipParens returns the index just past the parenthesis group opening at i.
-func skipParens(toks []scanned, i int) int {
+// skipParens returns the index just past the parenthesis group opening at
+// openIndex.
+func skipParens(tokens []scanned, openIndex int) int {
 	depth := 0
-	for ; i < len(toks); i++ {
-		switch toks[i].tok {
+	for ; openIndex < len(tokens); openIndex++ {
+		switch tokens[openIndex].tok {
 		case token.LPAREN:
 			depth++
 		case token.RPAREN:
 			if depth--; depth == 0 {
-				return i + 1
+				return openIndex + 1
 			}
 		}
 	}
-	return i
+	return openIndex
 }
 
 // commentEnd returns the offset just past the comment starting at start.
-func commentEnd(src string, start int) int {
-	if strings.HasPrefix(src[start:], "//") {
-		if i := strings.IndexByte(src[start:], '\n'); i >= 0 {
-			return start + i
+func commentEnd(sourceText string, start int) int {
+	if strings.HasPrefix(sourceText[start:], "//") {
+		if newlineIndex := strings.IndexByte(sourceText[start:], '\n'); newlineIndex >= 0 {
+			return start + newlineIndex
 		}
-		return len(src)
+		return len(sourceText)
 	}
-	if i := strings.Index(src[start+2:], "*/"); i >= 0 {
-		return start + 2 + i + 2
+	if closeIndex := strings.Index(sourceText[start+2:], "*/"); closeIndex >= 0 {
+		return start + 2 + closeIndex + 2
 	}
-	return len(src)
+	return len(sourceText)
 }
 
 // assembleLines walks src once, emitting escaped text and wrapping the spans,
 // and cuts a new line at every newline. Tokens that span lines — raw strings
 // and block comments — are wrapped separately on each line they cover, since
 // every line is its own row in the report.
-func assembleLines(src string, spans []tokenSpan) []template.HTML {
-	out := make([]template.HTML, 0, strings.Count(src, "\n")+1)
-	var b strings.Builder
+func assembleLines(sourceText string, spans []tokenSpan) []template.HTML {
+	lines := make([]template.HTML, 0, strings.Count(sourceText, "\n")+1)
+	var currentLine strings.Builder
 
 	emit := func(text, class string) {
 		for {
 			chunk, rest := text, ""
-			cut := false
-			if i := strings.IndexByte(text, '\n'); i >= 0 {
-				chunk, rest, cut = text[:i], text[i+1:], true
+			endsLine := false
+			if newlineIndex := strings.IndexByte(text, '\n'); newlineIndex >= 0 {
+				chunk, rest, endsLine = text[:newlineIndex], text[newlineIndex+1:], true
 			}
 			if chunk != "" {
 				if class != "" {
-					b.WriteString(`<span class="` + class + `">`)
+					currentLine.WriteString(`<span class="` + class + `">`)
 				}
-				b.WriteString(template.HTMLEscapeString(chunk))
+				currentLine.WriteString(template.HTMLEscapeString(chunk))
 				if class != "" {
-					b.WriteString(`</span>`)
+					currentLine.WriteString(`</span>`)
 				}
 			}
-			if !cut {
+			if !endsLine {
 				return
 			}
-			out = append(out, template.HTML(b.String()))
-			b.Reset()
+			lines = append(lines, template.HTML(currentLine.String()))
+			currentLine.Reset()
 			text = rest
 		}
 	}
 
-	off := 0
-	for _, sp := range spans {
-		if sp.start < off {
+	offset := 0
+	for _, span := range spans {
+		if span.start < offset {
 			continue
 		}
-		emit(src[off:sp.start], "")
-		emit(src[sp.start:sp.end], sp.class)
-		off = sp.end
+		emit(sourceText[offset:span.start], "")
+		emit(sourceText[span.start:span.end], span.class)
+		offset = span.end
 	}
-	emit(src[off:], "")
-	return append(out, template.HTML(b.String()))
+	emit(sourceText[offset:], "")
+	return append(lines, template.HTML(currentLine.String()))
 }
