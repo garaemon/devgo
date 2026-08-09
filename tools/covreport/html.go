@@ -42,7 +42,7 @@ func renderHTML(out io.Writer, coverage profile, module, commit string,
 		files = append(files, annotateFile(relPath, string(sourceText), coverage[profileKey]))
 	}
 
-	total := totalTally(coverage)
+	total := aggregateTotal(coverage)
 	data := htmlData{
 		Module:  module,
 		Commit:  commit,
