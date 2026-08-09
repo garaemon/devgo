@@ -243,6 +243,16 @@ func parseDiffBytes(data []byte, source string) (map[string][]int, error) {
 	return added, nil
 }
 
+// coverableFile reports whether a repository-relative path is one whose
+// coverage the report should account for. It is the single definition of
+// "code that counts", applied to both inputs — profile entries and diff
+// hunks — so a file can never be counted on one side and missing on the
+// other, which would make patch coverage disagree with the project total.
+//
+// Excluded are non-Go files, which have no statements to cover; test sources
+// (`_test.go` and everything under `test/`), which are the tests themselves
+// rather than the code under test; and `tools/`, whose helpers — covreport
+// among them — support the build rather than ship in the binary.
 func coverableFile(name string) bool {
 	return strings.HasSuffix(name, ".go") &&
 		!strings.HasSuffix(name, "_test.go") &&
@@ -276,6 +286,15 @@ func parseHunkHeader(line string) (startLine, lineCount int, err error) {
 	return 0, 0, fmt.Errorf("malformed hunk header %q", line)
 }
 
+// tally is a running count of statements over some scope — a file, a package,
+// a patch or the whole project — used for every percentage in the report.
+//
+// The unit is statements, not lines, because that is what the profile counts:
+// each block carries a statement count, and a block either ran or it did not.
+// So total is the statements seen and covered the subset in blocks that ran,
+// which makes coverage the ratio of the two and keeps a dense one-liner worth
+// more than a line of punctuation. A tally with total 0 means nothing
+// coverable was in scope, and reports as "n/a" rather than 0%.
 type tally struct {
 	covered int
 	total   int
@@ -288,6 +307,9 @@ func (counts tally) percent() float64 {
 	return 100 * float64(counts.covered) / float64(counts.total)
 }
 
+// add folds one coverage block into the tally. A block counts as covered in
+// full or not at all, since the profile records a single execution count for
+// all of its statements.
 func (counts *tally) add(coverageBlock block) {
 	counts.total += coverageBlock.numStmts
 	if coverageBlock.count > 0 {
