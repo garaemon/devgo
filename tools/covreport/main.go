@@ -157,9 +157,34 @@ func moduleFromGoMod(path string) (string, error) {
 	return "", fmt.Errorf("no module directive in %s", path)
 }
 
-// parseProfile reads a coverage profile, dropping files that are not
-// coverable (tooling under tools/). Each line after the "mode:" header
-// looks like: name.go:startLine.startCol,endLine.endCol numStmts count
+// A coverage profile is the text file written by go test -coverprofile. The
+// first line is a mode header and every line after it describes one coverage
+// block:
+//
+//	mode: set
+//	github.com/garaemon/devgo/pkg/config/config.go:58.39,59.52 1 1
+//	github.com/garaemon/devgo/pkg/config/config.go:59.52,61.3 1 0
+//
+// A block line has the shape
+//
+//	<import path>/<file>.go:<startLine>.<startCol>,<endLine>.<endCol> <numStmts> <count>
+//
+// where numStmts is how many statements the block contains and count is how
+// often it ran, so 0 means uncovered. The header says what count means: under
+// "set" it is only 0 or 1, while "count" and "atomic" hold real execution
+// counts. This tool only asks whether count is nonzero, so all three modes
+// parse identically and the header is skipped.
+//
+// A block is a straight-line run of statements rather than a line range,
+// which is why the positions carry columns and why a block can begin and end
+// part-way through a line — above, line 59 ends the first block and starts
+// the second. covreport works at line granularity and ignores the columns, so
+// a single line may belong to several blocks. Blocks for one file are not
+// guaranteed to be contiguous in the profile either, hence the append below
+// rather than a single assignment.
+//
+// parseProfile reads such a profile, dropping files that are not coverable
+// (tooling under tools/).
 func parseProfile(path, module string) (profile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -184,6 +209,9 @@ func parseProfile(path, module string) (profile, error) {
 	return p, nil
 }
 
+// parseProfileLine splits one block line into its file name and block. The
+// name is taken as everything before the *last* colon: it is a full import
+// path, so only the trailing position field has a fixed shape.
 func parseProfileLine(line string) (string, block, error) {
 	colon := strings.LastIndex(line, ":")
 	if colon < 0 {
