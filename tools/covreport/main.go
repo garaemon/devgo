@@ -352,7 +352,11 @@ type fileStat struct {
 	uncovered []int
 }
 
-func patchCoverage(head profile, added map[string][]int, module string) []fileStat {
+// aggregatePatchByFile sums the head profile over the added lines of each
+// changed file, in path order. A file is included only when the added lines
+// touch at least one coverable statement, so renames, comment-only edits and
+// changes to non-Go files leave no empty rows in the report.
+func aggregatePatchByFile(head profile, added map[string][]int, module string) []fileStat {
 	var stats []fileStat
 	files := make([]string, 0, len(added))
 	for file := range added {
@@ -463,7 +467,7 @@ func renderMarkdown(head, base profile, added map[string][]int, haveDiff bool,
 	patchLine := ""
 	var patchStats []fileStat
 	if haveDiff {
-		patchStats = patchCoverage(head, added, module)
+		patchStats = aggregatePatchByFile(head, added, module)
 		var patchTotal tally
 		for _, stat := range patchStats {
 			patchTotal.covered += stat.coverage.covered

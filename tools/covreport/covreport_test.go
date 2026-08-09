@@ -109,16 +109,16 @@ func TestCompressRanges(t *testing.T) {
 	}
 }
 
-func TestPatchCoverageDropsEmptyFiles(t *testing.T) {
+func TestAggregatePatchByFileDropsEmptyFiles(t *testing.T) {
 	const module = "example.com/m"
 	head := profile{
 		module + "/cmd/a.go": {{startLine: 10, endLine: 12, numStmts: 2, count: 1}},
 	}
 	added := map[string][]int{"cmd/a.go": {11}, "cmd/b.go": {3}}
 
-	stats := patchCoverage(head, added, module)
+	stats := aggregatePatchByFile(head, added, module)
 	if len(stats) != 1 || stats[0].file != "cmd/a.go" {
-		t.Fatalf("patchCoverage = %+v, want only cmd/a.go", stats)
+		t.Fatalf("aggregatePatchByFile = %+v, want only cmd/a.go", stats)
 	}
 }
 
