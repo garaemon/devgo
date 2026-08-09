@@ -248,15 +248,15 @@ func TestAnnotateFileUncoveredWins(t *testing.T) {
 }
 
 func TestHighlightLines(t *testing.T) {
-	src := "package p\n" +
+	sourceText := "package p\n" +
 		"\n" +
 		"// count returns 2 < 3 & more.\n" +
 		"func count(s string) int {\n" +
 		"\treturn len(s) + 42\n" +
 		"}\n"
 
-	got := highlightLines("p.go", src)
-	if want := strings.Split(src, "\n"); len(got) != len(want) {
+	got := highlightLines("p.go", sourceText)
+	if want := strings.Split(sourceText, "\n"); len(got) != len(want) {
 		t.Fatalf("got %d lines, want %d", len(got), len(want))
 	}
 	checks := []struct {
@@ -282,42 +282,42 @@ func TestHighlightLines(t *testing.T) {
 // signal is what follows the identifier.
 func TestHighlightLinesFuncNames(t *testing.T) {
 	tests := []struct {
-		name, src, want string
+		name, sourceText, want string
 	}{
 		{
-			name: "method",
-			src:  "func (r *T) Do(a int) {}",
+			name:       "method",
+			sourceText: "func (r *T) Do(a int) {}",
 			want: `<span class="k">func</span> (r *T) <span class="f">Do</span>` +
 				`(a <span class="b">int</span>) {}`,
 		},
 		{
-			name: "generic function",
-			src:  "func Map[K any](m K) {}",
+			name:       "generic function",
+			sourceText: "func Map[K any](m K) {}",
 			want: `<span class="k">func</span> <span class="f">Map</span>` +
 				`[K <span class="b">any</span>](m K) {}`,
 		},
 		{
-			name: "func type keeps its return type",
-			src:  "var f func(int) int",
+			name:       "func type keeps its return type",
+			sourceText: "var f func(int) int",
 			want: `<span class="k">var</span> f <span class="k">func</span>` +
 				`(<span class="b">int</span>) <span class="b">int</span>`,
 		},
 		{
-			name: "func literal has no name",
-			src:  "var g = func(x int) int { return x }",
+			name:       "func literal has no name",
+			sourceText: "var g = func(x int) int { return x }",
 			want: `<span class="k">var</span> g = <span class="k">func</span>` +
 				`(x <span class="b">int</span>) <span class="b">int</span> { ` +
 				`<span class="k">return</span> x }`,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := highlightLines("p.go", "package p\n"+tt.src+"\n")
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := highlightLines("p.go", "package p\n"+testCase.sourceText+"\n")
 			if len(got) != 3 {
 				t.Fatalf("got %d lines, want 3", len(got))
 			}
-			if string(got[1]) != tt.want {
-				t.Errorf("got\n  %s\nwant\n  %s", got[1], tt.want)
+			if string(got[1]) != testCase.want {
+				t.Errorf("got\n  %s\nwant\n  %s", got[1], testCase.want)
 			}
 		})
 	}
@@ -326,14 +326,14 @@ func TestHighlightLinesFuncNames(t *testing.T) {
 // Raw strings and block comments cover several rows, and each row is wrapped
 // on its own so the coverage tint of the rows around them stays intact.
 func TestHighlightLinesMultiLineTokens(t *testing.T) {
-	src := "package p\n" +
+	sourceText := "package p\n" +
 		"\n" +
 		"/* one\n" +
 		"   two */\n" +
 		"var s = `raw <\n" +
 		"line`\n"
 
-	got := highlightLines("p.go", src)
+	got := highlightLines("p.go", sourceText)
 	want := []string{
 		`<span class="k">package</span> p`,
 		``,
@@ -357,31 +357,31 @@ func TestHighlightLinesMultiLineTokens(t *testing.T) {
 // its line count intact, since the rows carry the line numbers.
 func TestHighlightLinesFallback(t *testing.T) {
 	tests := []struct {
-		name, rel, src string
-		want           []string
+		name, relPath, sourceText string
+		want                      []string
 	}{
 		{
-			name: "not a go file",
-			rel:  "notes.txt",
-			src:  "func x() <b>\nplain\n",
-			want: []string{"func x() &lt;b&gt;", "plain", ""},
+			name:       "not a go file",
+			relPath:    "notes.txt",
+			sourceText: "func x() <b>\nplain\n",
+			want:       []string{"func x() &lt;b&gt;", "plain", ""},
 		},
 		{
-			name: "unscannable go source",
-			rel:  "broken.go",
-			src:  "package p\nvar s = \"unterminated & <\n",
-			want: []string{"package p", `var s = &#34;unterminated &amp; &lt;`, ""},
+			name:       "unscannable go source",
+			relPath:    "broken.go",
+			sourceText: "package p\nvar s = \"unterminated & <\n",
+			want:       []string{"package p", `var s = &#34;unterminated &amp; &lt;`, ""},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := highlightLines(tt.rel, tt.src)
-			if len(got) != len(tt.want) {
-				t.Fatalf("got %d lines, want %d", len(got), len(tt.want))
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := highlightLines(testCase.relPath, testCase.sourceText)
+			if len(got) != len(testCase.want) {
+				t.Fatalf("got %d lines, want %d", len(got), len(testCase.want))
 			}
-			for i := range tt.want {
-				if string(got[i]) != tt.want[i] {
-					t.Errorf("line %d = %q, want %q", i+1, got[i], tt.want[i])
+			for i := range testCase.want {
+				if string(got[i]) != testCase.want[i] {
+					t.Errorf("line %d = %q, want %q", i+1, got[i], testCase.want[i])
 				}
 			}
 		})
