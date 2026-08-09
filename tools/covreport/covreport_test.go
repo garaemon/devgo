@@ -75,15 +75,15 @@ func TestParseHunkHeader(t *testing.T) {
 		{"@@ -42 +43,5 @@ test-coverage:", 43, 5},
 		{"@@ -7,2 +8,0 @@", 8, 0},
 	}
-	for _, tt := range tests {
-		t.Run(tt.line, func(t *testing.T) {
-			start, count, err := parseHunkHeader(tt.line)
+	for _, testCase := range tests {
+		t.Run(testCase.line, func(t *testing.T) {
+			start, count, err := parseHunkHeader(testCase.line)
 			if err != nil {
 				t.Fatalf("parseHunkHeader returned error: %v", err)
 			}
-			if start != tt.wantStart || count != tt.wantCount {
+			if start != testCase.wantStart || count != testCase.wantCount {
 				t.Errorf("got (%d, %d), want (%d, %d)",
-					start, count, tt.wantStart, tt.wantCount)
+					start, count, testCase.wantStart, testCase.wantCount)
 			}
 		})
 	}
@@ -101,10 +101,10 @@ func TestCompressRanges(t *testing.T) {
 		{"mixed", []int{12, 13, 14, 15, 22}, "12-15, 22"},
 		{"pairs", []int{1, 2, 5, 6}, "1-2, 5-6"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := compressRanges(tt.lines); got != tt.want {
-				t.Errorf("compressRanges(%v) = %q, want %q", tt.lines, got, tt.want)
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := compressRanges(testCase.lines); got != testCase.want {
+				t.Errorf("compressRanges(%v) = %q, want %q", testCase.lines, got, testCase.want)
 			}
 		})
 	}
@@ -236,17 +236,17 @@ func TestParseProfileLine(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			file, gotBlock, err := parseProfileLine(tt.line)
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			file, gotBlock, err := parseProfileLine(testCase.line)
 			if err != nil {
-				t.Fatalf("parseProfileLine(%q) returned error: %v", tt.line, err)
+				t.Fatalf("parseProfileLine(%q) returned error: %v", testCase.line, err)
 			}
-			if file != tt.wantFile {
-				t.Errorf("file = %q, want %q", file, tt.wantFile)
+			if file != testCase.wantFile {
+				t.Errorf("file = %q, want %q", file, testCase.wantFile)
 			}
-			if gotBlock != tt.wantBlock {
-				t.Errorf("block = %+v, want %+v", gotBlock, tt.wantBlock)
+			if gotBlock != testCase.wantBlock {
+				t.Errorf("block = %+v, want %+v", gotBlock, testCase.wantBlock)
 			}
 		})
 	}
