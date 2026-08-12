@@ -1,10 +1,14 @@
-.PHONY: build test lint clean install test-coverage test-integration coverage-report coverage-diff dev ci ci-full help
+.PHONY: build test lint clean install test-coverage test-integration \
+	coverage-report coverage-diff dev ci ci-full help
 
 # Default target
 .DEFAULT_GOAL := build
 
 # Base revision for the diff coverage view: make coverage-diff BASE=origin/main
 BASE ?= main
+
+# Lines of context shown around each changed line in that view
+CONTEXT ?= 3
 
 help:
 	@echo "Available targets:"
@@ -13,7 +17,8 @@ help:
 	@echo "  test-integration - Run integration tests"
 	@echo "  test-coverage    - Run tests with coverage report"
 	@echo "  coverage-report  - Print markdown coverage summary"
-	@echo "  coverage-diff    - HTML coverage for lines changed since BASE (default main)"
+	@echo "  coverage-diff    - HTML coverage for lines changed since BASE (default main),"
+	@echo "                     with CONTEXT lines around each change (default 3)"
 	@echo "  lint             - Run linter"
 	@echo "  clean            - Clean build artifacts"
 	@echo "  install          - Install binary to GOPATH/bin"
@@ -56,7 +61,7 @@ coverage-report: test-coverage
 coverage-diff:
 	go test -coverprofile=coverage.out ./...
 	go run ./tools/covreport -cover coverage.out -format html \
-	  -diff-base $(BASE) > coverage.html
+	  -diff-base $(BASE) -diff-context $(CONTEXT) > coverage.html
 
 # Run integration tests
 test-integration:

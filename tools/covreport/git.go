@@ -1,3 +1,9 @@
+// The git helpers back the -diff-base/-diff-head flags, which let covreport
+// take its own diff instead of being handed one. CI already has a diff to pass
+// via -diff; this exists so `make coverage-diff BASE=<rev>` works from a
+// working tree with no extra plumbing. Every call shells out rather than
+// linking a git library, to keep the tool dependency-free per the repository's
+// standard-library-first policy.
 package main
 
 import (
@@ -37,6 +43,11 @@ func gitDiff(base, head string) ([]byte, error) {
 	if head != "" {
 		args = append(args, head)
 	}
+	// The trailing "--" is what tells git the names before it are revisions.
+	// Without it a base whose name is also a path — cmd, test, tools and docs
+	// are all plausible branch names here — fails as ambiguous, and a base
+	// beginning with "-" is parsed as an option.
+	args = append(args, "--")
 	return runGit(args...)
 }
 

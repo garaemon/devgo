@@ -556,3 +556,153 @@ func TestParseProfileMissingFile(t *testing.T) {
 		t.Fatal("expected an error for a profile that does not exist")
 	}
 }
+
+func TestRangeLabel(t *testing.T) {
+	tests := []struct {
+		name    string
+		options htmlOptions
+		want    string
+	}{
+		{"base against the working tree", htmlOptions{DiffBase: "main"}, "main … working tree"},
+		{"base against a revision", htmlOptions{DiffBase: "main", DiffHead: "HEAD"}, "main … HEAD"},
+		{"a pre-generated diff file", htmlOptions{DiffFile: "pr.diff"}, "pr.diff"},
+		{"no diff at all", htmlOptions{}, ""},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := rangeLabel(testCase.options); got != testCase.want {
+				t.Errorf("rangeLabel = %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
+// A file whose source cannot be read is dropped from the listing, but its
+// statements still belong in the header, which otherwise reports a percentage
+// the markdown report contradicts.
+func TestRenderHTMLHeaderCountsUnreadableSources(t *testing.T) {
+	const module = "example.com/m"
+	head := profile{
+		module + "/cmd/a.go": {{startLine: 1, endLine: 2, numStmts: 2, count: 1}},
+		module + "/cmd/b.go": {{startLine: 1, endLine: 2, numStmts: 4, count: 0}},
+	}
+	added := map[string][]int{"cmd/a.go": {1}, "cmd/b.go": {1}}
+	options := htmlOptions{
+		Module: module, Added: added, HaveDiff: true, DiffBase: "main", Context: 3,
+		Source: func(relPath string) ([]byte, error) {
+			if relPath == "cmd/b.go" {
+				return nil, fmt.Errorf("gone at this revision")
+			}
+			return []byte("x\ny\nz\n"), nil
+		},
+	}
+
+	var rendered bytes.Buffer
+	if err := renderHTML(&rendered, head, options); err != nil {
+		t.Fatalf("renderHTML returned error: %v", err)
+	}
+	page := rendered.String()
+
+	// The markdown report counts 2 of 6; the header must agree.
+	if want := "patch 33.3% (2/6 statements)"; !strings.Contains(page, want) {
+		t.Errorf("header should contain %q", want)
+	}
+	// Only the header carries the statement counts; cmd/a.go's own section
+	// legitimately reads "patch 100.0%", since it is fully covered.
+	if strings.Contains(page, "patch 100.0% (") {
+		t.Error("header counted only the files it could render")
+	}
+	if strings.Contains(page, "cmd/b.go") {
+		t.Error("an unreadable source should not be rendered as a section")
+	}
+}
+
+// renderHTML must not write through the added-line map it is handed.
+func TestRenderHTMLDoesNotMutateAddedLines(t *testing.T) {
+	const module = "example.com/m"
+	head := profile{
+		module + "/cmd/a.go": {{startLine: 1, endLine: 2, numStmts: 2, count: 1}},
+	}
+	added := map[string][]int{"cmd/a.go": {12, 5, 5}}
+	options := htmlOptions{
+		Module: module, Added: added, HaveDiff: true, DiffBase: "main", Context: 3,
+		Source: func(relPath string) ([]byte, error) { return []byte(source20()), nil },
+	}
+
+	var rendered bytes.Buffer
+	if err := renderHTML(&rendered, head, options); err != nil {
+		t.Fatalf("renderHTML returned error: %v", err)
+	}
+	if want := []int{12, 5, 5}; !reflect.DeepEqual(added["cmd/a.go"], want) {
+		t.Errorf("caller's slice = %v, want %v untouched", added["cmd/a.go"], want)
+	}
+}
+
+func TestLoadAddedLines(t *testing.T) {
+	diff := "+++ b/cmd/up.go\n@@ -10,0 +11,2 @@\n+a()\n+b()\n"
+	diffPath := filepath.Join(t.TempDir(), "pr.diff")
+	if err := os.WriteFile(diffPath, []byte(diff), 0o600); err != nil {
+		t.Fatalf("writing the diff: %v", err)
+	}
+
+	t.Run("from a diff file", func(t *testing.T) {
+		added, haveDiff, err := loadAddedLines(diffPath, "", "")
+		if err != nil {
+			t.Fatalf("loadAddedLines returned error: %v", err)
+		}
+		if !haveDiff {
+			t.Error("a diff was requested, so haveDiff must be true")
+		}
+		if want := []int{11, 12}; !reflect.DeepEqual(added["cmd/up.go"], want) {
+			t.Errorf("added = %v, want %v", added["cmd/up.go"], want)
+		}
+	})
+
+	t.Run("no diff requested", func(t *testing.T) {
+		added, haveDiff, err := loadAddedLines("", "", "")
+		if err != nil {
+			t.Fatalf("loadAddedLines returned error: %v", err)
+		}
+		if haveDiff {
+			t.Error("no diff was requested, so haveDiff must be false")
+		}
+		if added != nil {
+			t.Errorf("added = %v, want nil", added)
+		}
+	})
+
+	// The bool says a diff was *requested*, so it stays true when reading it
+	// failed — a caller that carries on past the error still knows a patch
+	// column was asked for.
+	t.Run("unreadable diff file", func(t *testing.T) {
+		_, haveDiff, err := loadAddedLines(filepath.Join(t.TempDir(), "absent.diff"), "", "")
+		if err == nil {
+			t.Fatal("expected an error for a diff file that does not exist")
+		}
+		if !haveDiff {
+			t.Error("haveDiff must report the request, not whether it succeeded")
+		}
+	})
+}
+
+func TestSourceFor(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hello.txt")
+	if err := os.WriteFile(path, []byte("hello\n"), 0o600); err != nil {
+		t.Fatalf("writing the file: %v", err)
+	}
+
+	// An empty revision reads the working tree; a named one goes through git,
+	// which TestGitShowReadsAFileAtARevision covers.
+	readSource := sourceFor("")
+	got, err := readSource(path)
+	if err != nil {
+		t.Fatalf("sourceFor(\"\") returned error: %v", err)
+	}
+	if string(got) != "hello\n" {
+		t.Errorf("contents = %q, want %q", got, "hello\n")
+	}
+	if _, err := readSource(filepath.Join(dir, "absent.txt")); err == nil {
+		t.Error("expected an error for a file that does not exist")
+	}
+}

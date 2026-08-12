@@ -117,20 +117,23 @@ func main() {
 
 // loadAddedLines resolves the added-line map from either a pre-generated diff
 // file (-diff) or a revision range (-diff-base/-diff-head). The bool reports
-// whether a diff was requested at all.
+// whether a diff was requested at all, so it is true whenever one of those
+// flags was given — including when reading or parsing it then failed. A caller
+// that chooses to carry on past the error therefore still knows a patch column
+// was asked for, rather than silently rendering the report without one.
 func loadAddedLines(diffPath, diffBase, diffHead string) (map[string][]int, bool, error) {
 	switch {
 	case diffPath != "":
 		added, err := parseDiff(diffPath)
-		return added, err == nil, err
+		return added, true, err
 	case diffBase != "":
 		diffText, err := gitDiff(diffBase, diffHead)
 		if err != nil {
-			return nil, false, err
+			return nil, true, err
 		}
 		source := fmt.Sprintf("git diff %s %s", diffBase, diffHead)
 		added, err := parseDiffBytes(diffText, source)
-		return added, err == nil, err
+		return added, true, err
 	}
 	return nil, false, nil
 }
