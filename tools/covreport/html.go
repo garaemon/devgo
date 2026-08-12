@@ -68,7 +68,9 @@ func renderHTML(out io.Writer, coverage profile, options htmlOptions) error {
 			fmt.Fprintf(os.Stderr, "covreport: skipping %s: %v\n", relPath, err)
 			continue
 		}
-		addedLines := options.Added[relPath]
+		// Copied because sort.Ints and dedupInts both write through the slice,
+		// and options.Added belongs to the caller.
+		addedLines := append([]int(nil), options.Added[relPath]...)
 		sort.Ints(addedLines)
 		addedLines = dedupInts(addedLines)
 
@@ -76,11 +78,22 @@ func renderHTML(out io.Writer, coverage profile, options htmlOptions) error {
 			addedLines, options.Context)
 		if file.Changed {
 			changedCount++
-			// Patch numbers come from the profile, not the annotated source,
-			// so the header always matches the markdown report.
+			// Patch numbers come from the profile, not the annotated source, so
+			// they match the markdown report.
 			patchTally := tallies[relPath]
 			file.PatchCovered, file.PatchTotal = patchTally.covered, patchTally.total
 			file.PatchPercent = patchTally.percent()
+
+			// Every added line fell outside the source read for this file —
+			// profile/source skew, or a -diff-head the profile was not built
+			// from. The diff view would show the file as one elision row with
+			// no hint that the two disagree, so say so.
+			if !hasVisibleRow(file) {
+				fmt.Fprintf(os.Stderr,
+					"covreport: %s: no changed line is within the source read "+
+						"for it (%d lines); diff and source disagree\n",
+					relPath, countSourceRows(file))
+			}
 		}
 		file.PatchLabel = "n/a"
 		if file.PatchTotal > 0 {
@@ -104,16 +117,42 @@ func renderHTML(out io.Writer, coverage profile, options htmlOptions) error {
 	if options.HaveDiff && changedCount > 0 {
 		data.BodyClass = "mode-diff"
 	}
+	// Summed from the tallies rather than from files, so a file whose source
+	// could not be read still counts: it is dropped from the rendered listing
+	// above, but its statements belong in the header either way, and leaving
+	// them out inflates the percentage against the markdown report.
 	var patchTotal tally
-	for _, file := range files {
-		patchTotal.covered += file.PatchCovered
-		patchTotal.total += file.PatchTotal
+	for relPath := range options.Added {
+		patchTotal.covered += tallies[relPath].covered
+		patchTotal.total += tallies[relPath].total
 	}
 	if patchTotal.total > 0 {
 		data.PatchLabel = fmt.Sprintf("%.1f%% (%d/%d statements)",
 			patchTotal.percent(), patchTotal.covered, patchTotal.total)
 	}
 	return htmlTemplate.Execute(out, data)
+}
+
+// hasVisibleRow reports whether any source row of the file shows in the diff
+// view. A changed file with none means no added line landed inside its source.
+func hasVisibleRow(file htmlFile) bool {
+	for _, row := range file.Lines {
+		if row.Visible {
+			return true
+		}
+	}
+	return false
+}
+
+// countSourceRows counts the file's source lines, excluding elision separators.
+func countSourceRows(file htmlFile) int {
+	count := 0
+	for _, row := range file.Lines {
+		if row.Gap == 0 {
+			count++
+		}
+	}
+	return count
 }
 
 // rangeLabel describes what the diff was taken against, for the header.
@@ -442,6 +481,8 @@ body.mode-diff section:not(.changed) { display: none !important; }
 {{end}}</nav>
 {{range .Files}}<section id="{{.ID}}"{{if .Changed}} class="changed"{{end}}>
 <h2>{{.Path}} — <span class="all-only">{{printf "%.1f" .Percent}}%</span><span class="diff-only">patch {{.PatchLabel}}</span></h2>
+{{/* The row loop below stays on one line: it is inside <pre>, so any newline
+     added for readability would render as a blank line in the source view. */ -}}
 <pre>{{range .Lines}}{{if .Gap}}<span class="gap">&hellip; {{.Gap}} unchanged lines &hellip;</span>{{else}}<span class="{{.Class}}{{if .Added}} add{{end}}{{if not .Visible}} off{{end}}"><span class="n">{{.Num}}</span><span class="g"></span><span class="t">{{.Text}}</span></span>{{end}}{{end}}</pre>
 </section>
 {{end}}{{if .Diff}}<p class="empty diff-only"{{if .ChangedFiles}} hidden{{end}}>No coverable changes in {{.RangeLabel}}.</p>{{end}}</main>
