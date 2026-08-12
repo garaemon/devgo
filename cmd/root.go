@@ -272,7 +272,7 @@ Examples:
 }
 
 func showVersionInfo() {
-	fmt.Println("devgo version 0.4.0")
+	fmt.Println("devgo version 0.5.0")
 }
 
 func findDevcontainerConfig(configPath string) (string, error) {
