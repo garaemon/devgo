@@ -416,6 +416,9 @@ func aggregatePatchByFile(head profile, added map[string][]int, module string) [
 	return stats
 }
 
+// dedupInts removes adjacent duplicates from a sorted slice, compacting in
+// place: it overwrites sorted's backing array, so the caller's slice is left
+// with stale values past the returned length. Pass a slice you own.
 func dedupInts(sorted []int) []int {
 	deduped := sorted[:0]
 	previous := -1
