@@ -280,12 +280,12 @@ func findDevcontainerConfig(configPath string) (string, error) {
 		return configPath, nil
 	}
 
-	cwd, err := os.Getwd()
+	searchRoot, err := determineConfigSearchRoot()
 	if err != nil {
 		return "", err
 	}
 
-	for dir := cwd; dir != "/"; dir = filepath.Dir(dir) {
+	for dir := searchRoot; dir != "/"; dir = filepath.Dir(dir) {
 		debugf("Checking directory: %s\n", dir)
 
 		configFile := filepath.Join(dir, ".devcontainer", "devcontainer.json")
@@ -300,6 +300,17 @@ func findDevcontainerConfig(configPath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no devcontainer.json found in current directory or parent directories")
+}
+
+// determineConfigSearchRoot returns the directory where devcontainer.json
+// discovery starts. The --workspace-folder flag takes precedence over the
+// current working directory so that commands operate on the requested
+// workspace regardless of where devgo is invoked from.
+func determineConfigSearchRoot() (string, error) {
+	if workspaceFolder != "" {
+		return filepath.Abs(workspaceFolder)
+	}
+	return os.Getwd()
 }
 
 func determineWorkspaceFolder(devcontainerPath string) string {
