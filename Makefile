@@ -1,4 +1,4 @@
-.PHONY: build test lint clean install test-coverage test-integration coverage-report coverage-diff dev ci ci-full help
+.PHONY: build test lint clean install test-coverage test-integration coverage-report coverage-diff run-coverage-tests dev ci ci-full help
 
 # Default target
 .DEFAULT_GOAL := build
@@ -35,28 +35,35 @@ lint:
 
 # Clean build artifacts
 clean:
-	rm -f devgo
+	rm -f devgo coverage.out coverage.html coverage.tmp.html base-coverage.out
 
 # Install binary to GOPATH/bin
 install:
 	go install .
 
-# Run tests with coverage
-test-coverage:
+# Shared by every coverage target so the test invocation lives in one place.
+run-coverage-tests:
 	go test -v -coverprofile=coverage.out ./...
-	go run ./tools/covreport -cover coverage.out -format html > coverage.html
 
-# Print a markdown coverage summary (same tool CI uses for PR comments)
-coverage-report: test-coverage
+# Run tests with coverage. The report is written to a temporary file first, so
+# a failing run leaves the previous coverage.html readable.
+test-coverage: run-coverage-tests
+	go run ./tools/covreport -cover coverage.out -format html > coverage.tmp.html
+	mv coverage.tmp.html coverage.html
+
+# Print a markdown coverage summary (same tool CI uses for PR comments).
+# Independent of test-coverage so that printing a summary never replaces a
+# coverage.html the reader is still looking at.
+coverage-report: run-coverage-tests
 	go run ./tools/covreport -cover coverage.out
 
 # Browse coverage for just the lines changed since BASE. The report holds both
 # views; toggle "Changed only" / "All files" in the header. Deliberately not
 # dependent on test-coverage, which overwrites coverage.html with the full view.
-coverage-diff:
-	go test -coverprofile=coverage.out ./...
+coverage-diff: run-coverage-tests
 	go run ./tools/covreport -cover coverage.out -format html \
-	  -diff-base $(BASE) > coverage.html
+	  -diff-base '$(BASE)' > coverage.tmp.html
+	mv coverage.tmp.html coverage.html
 
 # Run integration tests
 test-integration:
