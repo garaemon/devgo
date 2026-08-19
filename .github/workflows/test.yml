@@ -49,6 +49,11 @@ jobs:
   # Computes project and patch coverage for pull requests and maintains a
   # single sticky PR comment with the results, replacing the old Codecov
   # upload. Informational only: the job never fails on coverage percentages.
+  #
+  # The suite runs here a second time on purpose: the test job runs -race
+  # across four Go versions, while the report needs exactly one profile from
+  # one version, and coupling the two would make the comment wait for the
+  # slowest matrix leg.
   coverage:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -93,10 +98,14 @@ jobs:
     # its record run is still in flight), walk back along first-parent
     # history to the nearest recorded commit.
     - name: Fetch baseline coverage
+      env:
+        BASE_REF: ${{ github.base_ref }}
       run: |
-        BASE=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+        BASE=$(git merge-base "origin/${BASE_REF}" HEAD)
         echo "BASE=$BASE" >> "$GITHUB_ENV"
-        git fetch origin coverage-data || true
+        # A coverage-data branch that was deleted and re-created is not a
+        # fast-forward, so the remote-tracking ref needs a forced update.
+        git fetch --force origin coverage-data:refs/remotes/origin/coverage-data || true
         if git rev-parse --verify --quiet origin/coverage-data >/dev/null; then
           for sha in $(git rev-list --first-parent -n 50 "$BASE"); do
             if git cat-file -e "origin/coverage-data:profiles/${sha}.out" 2>/dev/null; then
@@ -112,16 +121,22 @@ jobs:
         fi
 
     - name: Generate coverage report
+      env:
+        BASE_REF: ${{ github.base_ref }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
-        git diff -U0 "$BASE" HEAD > pr.diff
-        HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-        ARGS="-cover coverage.out -diff pr.diff"
-        ARGS="$ARGS -commit ${HEAD_SHA:0:7}"
+        # BASE and BASELINE_SHA come from the previous step through $GITHUB_ENV.
+        # covreport runs the diff itself, so the flags that keep diff paths
+        # matching the coverage profile stay in tools/covreport/git.go alone.
+        args=(-cover coverage.out -diff-base "$BASE" -diff-head HEAD)
+        args+=(-commit "${HEAD_SHA:0:7}")
         if [ -s base-coverage.out ]; then
-          ARGS="$ARGS -base-cover base-coverage.out"
-          ARGS="$ARGS -base-name ${{ github.base_ref }}@${BASELINE_SHA:0:7}"
+          # -base-name is only a label; -base-rev must stay resolvable
+          # because the report puts it in a command readers run.
+          args+=(-base-cover base-coverage.out)
+          args+=(-base-name "${BASE_REF}@${BASELINE_SHA:0:7}" -base-rev "${BASE_REF}")
         fi
-        go run ./tools/covreport $ARGS > coverage-report.md
+        go run ./tools/covreport "${args[@]}" > coverage-report.md
         cat coverage-report.md >> "$GITHUB_STEP_SUMMARY"
 
     # Fork PRs have no write token, so the comment step is skipped there;
@@ -132,13 +147,25 @@ jobs:
       with:
         script: |
           const fs = require('fs');
-          const body = fs.readFileSync('coverage-report.md', 'utf8');
           const marker = '<!-- devgo-coverage-report -->';
+          // A comment body over 65536 characters is rejected outright, which
+          // would fail a job that is meant to be informational. Large pull
+          // requests can reach that through the per-file table.
+          const limit = 65000;
+          let body = fs.readFileSync('coverage-report.md', 'utf8');
+          if (body.length > limit) {
+            body = body.slice(0, limit) +
+              '\n\n_Report truncated to fit GitHub\'s comment size limit._\n';
+          }
           const {owner, repo} = context.repo;
           const issue_number = context.issue.number;
           const comments = await github.paginate(github.rest.issues.listComments,
             {owner, repo, issue_number, per_page: 100});
-          const existing = comments.find(c => c.body && c.body.includes(marker));
+          // Quote reply copies the marker into a human's comment, so the
+          // author has to match too: editing somebody else's comment would
+          // be worse than posting a second report.
+          const existing = comments.find(c =>
+            c.user && c.user.type === 'Bot' && c.body && c.body.includes(marker));
           if (existing) {
             await github.rest.issues.updateComment(
               {owner, repo, comment_id: existing.id, body});
@@ -149,6 +176,11 @@ jobs:
   # Stores the coverage profile of every main commit on the coverage-data
   # branch (profiles/<sha>.out) so PR coverage runs can diff against a
   # recorded baseline instead of re-running the tests on the merge-base.
+  #
+  # Each run appends one commit. The branch therefore grows by one profile
+  # per main commit and is never pruned; deleting it is safe when it gets
+  # large, because the next run re-creates it as an orphan branch and the
+  # coverage job already tolerates a missing baseline.
   record-coverage:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -157,12 +189,18 @@ jobs:
       contents: write
 
     # Serializes pushes to coverage-data so concurrent main pushes can't
-    # race each other on the branch update.
+    # race each other on the branch update. GitHub keeps a single run queued,
+    # so a burst of pushes can still leave a commit unrecorded; the coverage
+    # job walks back through history to cope with those gaps.
     concurrency:
       group: coverage-data
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        # Full history, because a push from a shallow clone can be rejected
+        # outright.
+        fetch-depth: 0
 
     - name: Set up Go
       uses: actions/setup-go@v4
@@ -185,20 +223,31 @@ jobs:
 
     - name: Record profile on coverage-data branch
       run: |
-        cp coverage.out /tmp/recorded-coverage.out
+        cp coverage.out "/tmp/${GITHUB_SHA}.out"
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        if git fetch origin coverage-data; then
+        # A coverage-data branch that was deleted and re-created is not a
+        # fast-forward, so the remote-tracking ref needs a forced update.
+        if git fetch --force origin coverage-data:refs/remotes/origin/coverage-data; then
           git checkout -B coverage-data origin/coverage-data
         else
+          # --orphan refuses to reuse a branch name, which a re-run on a
+          # checkout that is not thrown away would otherwise hit.
+          git branch -D coverage-data >/dev/null 2>&1 || true
           git checkout --orphan coverage-data
           git rm -rf --quiet .
         fi
         mkdir -p profiles
-        cp /tmp/recorded-coverage.out "profiles/${GITHUB_SHA}.out"
+        cp "/tmp/${GITHUB_SHA}.out" "profiles/${GITHUB_SHA}.out"
         git add profiles
-        git commit -m "Record coverage for ${GITHUB_SHA}"
-        git push origin coverage-data
+        # Re-running this job for a commit already recorded stages nothing,
+        # and git commit fails on an empty commit.
+        if git diff --cached --quiet; then
+          echo "profile for ${GITHUB_SHA} is already recorded"
+        else
+          git commit -m "Record coverage for ${GITHUB_SHA}"
+          git push origin coverage-data
+        fi
 
   integration:
     runs-on: ubuntu-latest
