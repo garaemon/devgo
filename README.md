@@ -557,7 +557,8 @@ either a markdown summary or a self-contained HTML report.
 # Run tests and write an HTML coverage browser to coverage.html
 make test-coverage
 
-# Print the same markdown summary CI posts on pull requests
+# Print the markdown project summary (CI adds patch coverage and the
+# baseline delta by passing a diff and a base profile)
 make coverage-report
 
 # HTML report focused on the lines changed since a revision (default: main)
@@ -598,9 +599,14 @@ holds nothing but coverage profiles at `profiles/<commit-sha>.out`. It carries
 no project source and is never merged into `main`.
 
 - On every push to `main`, the `record-coverage` job runs the coverage tests
-  once and commits that commit's profile to `coverage-data`. Concurrent pushes
-  are serialized so they cannot clobber each other, and the branch is created
-  as an orphan on the first run.
+  once and **appends** that commit's profile to `coverage-data`. Concurrent
+  pushes are serialized so they cannot clobber each other, and the branch is
+  created as an orphan on the first run. Re-running the job for a commit that
+  is already recorded is a no-op.
+- The branch is never pruned, so it grows by one profile per `main` commit.
+  Deleting it is safe whenever it gets large: the next push to `main`
+  re-creates it, and pull requests opened in between simply report
+  "Baseline unavailable".
 - Pull request runs *read* that branch to get their baseline, so they only
   ever test their own head — the base branch is never re-tested. If the
   merge-base has no stored profile yet (for example its record run is still in

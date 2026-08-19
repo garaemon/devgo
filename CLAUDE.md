@@ -63,7 +63,9 @@ make help
 
 - **Unit tests**: Test individual packages with mocks
 - **Integration tests**: Test with actual Docker containers and sample devcontainer configs
-- **CI/CD**: GitHub Actions workflow tests on Go 1.21–1.24. A `coverage` job posts a
+- **CI/CD**: GitHub Actions runs the unit tests over a Go 1.21–1.24 matrix. Every leg
+  compiles with go1.24.4 in practice, because `go.mod` names that toolchain and
+  `GOTOOLCHAIN` is left at `auto`. A `coverage` job posts a
   sticky PR comment with project/patch coverage diffs (computed by `tools/covreport`,
   no external service). Baselines are recorded per main commit on the `coverage-data`
   branch by the `record-coverage` job, so PR runs test only the head. For an HTML
