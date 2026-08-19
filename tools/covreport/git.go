@@ -1,3 +1,7 @@
+// git.go wraps the git commands the -diff-base mode runs. Paths are
+// repository-relative throughout, so covreport must run from the repository
+// root.
+
 package main
 
 import (
@@ -25,23 +29,29 @@ func runGit(args ...string) ([]byte, error) {
 	return out, nil
 }
 
-// gitDiff produces the unified diff parseDiffBytes expects. An empty head
+// runGitDiff produces the unified diff parseDiffBytes expects. An empty head
 // diffs base against the working tree.
 //
 // The prefixes are set explicitly because a user with diff.noprefix=true would
 // otherwise get "+++ pkg/x.go", and stripping "b/" would silently yield a path
-// that never matches the coverage profile.
-func gitDiff(base, head string) ([]byte, error) {
-	args := []string{"diff", "-U0", "--no-color", "--no-ext-diff",
-		"--src-prefix=a/", "--dst-prefix=b/", base}
+// that never matches the coverage profile. For the same reason quotePath is
+// turned off: git otherwise writes a non-ASCII path as "b/pkg/caf\303\251.go",
+// which matches no profile entry and drops the file from patch coverage.
+//
+// --end-of-options keeps a revision that starts with "-" from being read as
+// an option such as --output=<file>.
+func runGitDiff(base, head string) ([]byte, error) {
+	args := []string{"-c", "core.quotePath=false",
+		"diff", "-U0", "--no-color", "--no-ext-diff",
+		"--src-prefix=a/", "--dst-prefix=b/", "--end-of-options", base}
 	if head != "" {
 		args = append(args, head)
 	}
 	return runGit(args...)
 }
 
-// gitShow returns a file's contents at rev. path is repository-relative, so
+// runGitShow returns a file's contents at rev. path is repository-relative, so
 // covreport must run from the repository root, as renderHTML already requires.
-func gitShow(rev, path string) ([]byte, error) {
-	return runGit("show", rev+":"+path)
+func runGitShow(rev, path string) ([]byte, error) {
+	return runGit("show", "--end-of-options", rev+":"+path)
 }

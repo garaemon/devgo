@@ -1,3 +1,8 @@
+// html.go renders the annotated source browser. The whole report is one
+// self-contained page: every file's source is emitted once, and the diff view
+// and the full listing are the same markup with a different class on <body>.
+// Nothing is fetched at view time, so the file works from a local checkout.
+
 package main
 
 import (
@@ -12,34 +17,91 @@ import (
 // sourceReader returns the contents of a repository-relative source file.
 type sourceReader func(rel string) ([]byte, error)
 
-// htmlOptions configures renderHTML. When Added is non-empty the report gains
-// a diff view alongside the full listing, toggled client-side.
+// htmlOptions configures renderHTML.
 type htmlOptions struct {
-	Module   string
-	Commit   string
-	Added    map[string][]int // repo-relative path -> added line numbers
-	HaveDiff bool
-	DiffBase string
-	DiffHead string
-	DiffFile string // set when the diff came from -diff instead of a revision
-	Context  int
-	Source   sourceReader
+	Module string
+	Commit string
+	// Added lists the changed lines per repo-relative path. HaveDiff, not
+	// len(Added), decides whether the report gains a diff view: a diff that
+	// touched no coverable file still renders the "no coverable changes"
+	// state instead of silently falling back to the plain listing.
+	Added        map[string][]int
+	HaveDiff     bool
+	DiffBase     string
+	DiffHead     string
+	DiffFile     string // set when the diff came from -diff instead of a revision
+	ContextLines int
+	Source       sourceReader
 }
 
-// renderHTML writes a self-contained coverage browser: a sidebar listing every
-// file with its coverage percentage and a main pane showing the annotated
-// source. It replaces the hard-to-read default theme of `go tool cover -html`.
+// renderHTML writes a self-contained coverage browser: a sidebar listing the
+// files that appear in the coverage profile (plus any changed file) with
+// their coverage percentage, and a main pane showing the annotated source.
+// It replaces the hard-to-read default theme of `go tool cover -html`.
+//
+// A file with no coverable statement never reaches the profile, so it is
+// absent from the report unless the diff added lines to it.
 //
 // When a diff is supplied the page carries both views — the changed hunks with
 // surrounding context, and the complete listing — and switches between them by
 // toggling a class on <body>, so the source text is emitted only once.
 func renderHTML(w io.Writer, p profile, opts htmlOptions) error {
 	if opts.Source == nil {
-		opts.Source = func(rel string) ([]byte, error) { return os.ReadFile(rel) }
+		// DiffHead, not "": a caller that names a head revision must not get
+		// the working tree's sources under a header that says otherwise.
+		opts.Source = newSourceReader(opts.DiffHead)
 	}
 
-	// Changed files that never appear in the profile still belong in the
-	// report, so the path set is the union of both sides.
+	tallies := computePatchTallies(p, opts.Added, opts.Module)
+	collected := collectHTMLFiles(p, opts, tallies)
+
+	total := sumProfileTally(p)
+	data := htmlData{
+		Module:              opts.Module,
+		Commit:              opts.Commit,
+		Percent:             total.percent(),
+		Diff:                opts.HaveDiff,
+		BodyClass:           "mode-all",
+		RangeLabel:          formatRangeLabel(opts),
+		PatchLabel:          "n/a",
+		ChangedFiles:        collected.changed,
+		SkippedFiles:        collected.skipped,
+		SkippedChangedFiles: collected.skippedChanged,
+		Files:               collected.files,
+	}
+	if opts.HaveDiff && collected.changed > 0 {
+		data.BodyClass = "mode-diff"
+	}
+	// Summing the tallies rather than the rendered files keeps the total
+	// equal to the markdown report's even when a source could not be read.
+	var patch tally
+	for _, t := range tallies {
+		patch.covered += t.covered
+		patch.total += t.total
+	}
+	if patch.total > 0 {
+		data.PatchLabel = fmt.Sprintf("%.1f%% (%d/%d statements)",
+			patch.percent(), patch.covered, patch.total)
+	}
+	return htmlTemplate.Execute(w, data)
+}
+
+// collectedFiles is what one pass over the sources produced: the rendered
+// panes plus the counts the header and the diff view's empty state need.
+type collectedFiles struct {
+	files   []htmlFile
+	changed int
+	// skipped counts every unreadable source for the header, while
+	// skippedChanged counts only the changed ones, which is what the diff
+	// view's empty state is allowed to talk about.
+	skipped        int
+	skippedChanged int
+}
+
+// collectReportPaths returns the profile-qualified path of every file the
+// report covers, sorted. Changed files that never appear in the profile still
+// belong in it, so the set is the union of both sides.
+func collectReportPaths(p profile, opts htmlOptions) []string {
 	paths := map[string]bool{}
 	for f := range p {
 		paths[f] = true
@@ -54,69 +116,63 @@ func renderHTML(w io.Writer, p profile, opts htmlOptions) error {
 		sorted = append(sorted, f)
 	}
 	sort.Strings(sorted)
+	return sorted
+}
 
-	tallies := patchTallies(p, opts.Added, opts.Module)
-
-	var files []htmlFile
-	changed := 0
-	for _, profPath := range sorted {
+// collectHTMLFiles reads and annotates every file of the report. A source it
+// cannot read is counted and skipped rather than failing the whole report,
+// because a profile taken at another commit can name files this checkout no
+// longer has.
+func collectHTMLFiles(p profile, opts htmlOptions, tallies map[string]tally) collectedFiles {
+	var out collectedFiles
+	usedIDs := map[string]bool{}
+	for _, profPath := range collectReportPaths(p, opts) {
 		rel := strings.TrimPrefix(profPath, opts.Module+"/")
 		src, err := opts.Source(rel)
 		if err != nil {
-			// Sources can be missing when the profile came from another
-			// commit; skip the file rather than failing the whole report.
 			fmt.Fprintf(os.Stderr, "covreport: skipping %s: %v\n", rel, err)
+			out.skipped++
+			if _, isChanged := opts.Added[rel]; isChanged {
+				out.skippedChanged++
+			}
 			continue
 		}
-		added := opts.Added[rel]
+		// dedupInts overwrites what it is given, so the caller's map must
+		// not be handed to it.
+		added := append([]int(nil), opts.Added[rel]...)
 		sort.Ints(added)
 		added = dedupInts(added)
 
-		f := annotateFile(rel, string(src), p[profPath], added, opts.Context)
+		f := annotateFile(rel, string(src), p[profPath], added, opts.ContextLines)
+		f.ID = makeUniqueID(f.ID, usedIDs)
+		f.PatchLabel = "n/a"
 		if f.Changed {
-			changed++
+			out.changed++
 			// Patch numbers come from the profile, not the annotated source,
 			// so the header always matches the markdown report.
-			t := tallies[rel]
-			f.PatchCovered, f.PatchTotal = t.covered, t.total
-			f.PatchPercent = t.percent()
+			if t := tallies[rel]; t.total > 0 {
+				f.PatchLabel = fmt.Sprintf("%.1f%%", t.percent())
+			}
 		}
-		f.PatchLabel = "n/a"
-		if f.PatchTotal > 0 {
-			f.PatchLabel = fmt.Sprintf("%.1f%%", f.PatchPercent)
-		}
-		files = append(files, f)
+		out.files = append(out.files, f)
 	}
-
-	total := totalTally(p)
-	data := htmlData{
-		Module:       opts.Module,
-		Commit:       opts.Commit,
-		Percent:      total.percent(),
-		Diff:         opts.HaveDiff,
-		BodyClass:    "mode-all",
-		RangeLabel:   rangeLabel(opts),
-		PatchLabel:   "n/a",
-		ChangedFiles: changed,
-		Files:        files,
-	}
-	if opts.HaveDiff && changed > 0 {
-		data.BodyClass = "mode-diff"
-	}
-	var patch tally
-	for _, f := range files {
-		patch.covered += f.PatchCovered
-		patch.total += f.PatchTotal
-	}
-	if patch.total > 0 {
-		data.PatchLabel = fmt.Sprintf("%.1f%% (%d/%d statements)",
-			patch.percent(), patch.covered, patch.total)
-	}
-	return htmlTemplate.Execute(w, data)
+	return out
 }
 
-// rangeLabel describes what the diff was taken against, for the header.
-func rangeLabel(opts htmlOptions) string {
+// makeUniqueID keeps section anchors distinct. Two different paths can map to
+// the same id — "cmd/a.go" and "cmd-a.go" both become "cmd-a-go" — and a
+// repeated id would make one sidebar link open the other file.
+func makeUniqueID(base string, used map[string]bool) string {
+	id := base
+	for n := 2; used[id]; n++ {
+		id = fmt.Sprintf("%s-%d", base, n)
+	}
+	used[id] = true
+	return id
+}
+
+// formatRangeLabel describes what the diff was taken against, for the header.
+func formatRangeLabel(opts htmlOptions) string {
 	switch {
 	case opts.DiffBase != "":
 		head := opts.DiffHead
@@ -130,27 +186,36 @@ func rangeLabel(opts htmlOptions) string {
 	return ""
 }
 
+// htmlData is the whole page: the header numbers plus one entry per file.
+// ChangedFiles and SkippedChangedFiles drive the diff view's empty state,
+// which has to tell "nothing changed" apart from "the changed sources were
+// unreadable". SkippedFiles is the header's total and counts unchanged files
+// too, so the empty state must not use it.
 type htmlData struct {
-	Module       string
-	Commit       string
-	Percent      float64
-	Diff         bool
-	BodyClass    string
-	RangeLabel   string
-	PatchLabel   string
-	ChangedFiles int
-	Files        []htmlFile
+	Module              string
+	Commit              string
+	Percent             float64
+	Diff                bool
+	BodyClass           string
+	RangeLabel          string
+	PatchLabel          string
+	ChangedFiles        int
+	SkippedFiles        int
+	SkippedChangedFiles int
+	Files               []htmlFile
 }
 
+// htmlFile is one file's pane and sidebar entry. Coverage reaches the page as
+// two labels rather than two numbers, because a file with no coverable
+// statement is not 0% covered, it is "n/a": PercentLabel covers the whole
+// file and shows in the all-files view, while PatchLabel covers only the
+// blocks the diff touched and shows in the diff view.
 type htmlFile struct {
 	Path         string
 	ID           string
-	Percent      float64
+	PercentLabel string
 	Lines        []htmlLine
 	Changed      bool
-	PatchPercent float64
-	PatchCovered int
-	PatchTotal   int
 	PatchLabel   string
 }
 
@@ -170,22 +235,23 @@ type htmlLine struct {
 // region is an inclusive run of source lines.
 type region struct{ start, end int }
 
-// diffRegions returns the line runs visible in the diff view: every added line
-// grown by context lines on each side, clamped to [1,totalLines] and merged
-// when the expanded runs touch or overlap. added must be sorted and deduped.
-func diffRegions(added []int, totalLines, context int) []region {
+// computeDiffRegions returns the line runs visible in the diff view: every
+// added line grown by context lines on each side, clamped to [1,totalLines]
+// and merged when the expanded runs touch or overlap. added must be sorted
+// and deduped.
+func computeDiffRegions(added []int, totalLines, contextLines int) []region {
 	if totalLines <= 0 || len(added) == 0 {
 		return nil
 	}
-	if context < 0 {
-		context = 0
+	if contextLines < 0 {
+		contextLines = 0
 	}
 	var out []region
-	for _, l := range added {
-		if l < 1 || l > totalLines {
+	for _, lineNumber := range added {
+		if lineNumber < 1 || lineNumber > totalLines {
 			continue // profile/source skew, or a line past EOF
 		}
-		s, e := l-context, l+context
+		s, e := lineNumber-contextLines, lineNumber+contextLines
 		if s < 1 {
 			s = 1
 		}
@@ -205,12 +271,23 @@ func diffRegions(added []int, totalLines, context int) []region {
 	return out
 }
 
+// splitSourceLines splits a file into its lines. A text file ends with a
+// newline, and the empty trailing field that Split yields for it is not a
+// line of the file: rendering it would number one line past the end.
+func splitSourceLines(src string) []string {
+	lines := strings.Split(src, "\n")
+	if n := len(lines); n > 0 && lines[n-1] == "" {
+		return lines[:n-1]
+	}
+	return lines
+}
+
 // annotateFile classifies each source line and, when added is non-empty, marks
 // the diff-view context windows and inserts elision separators between them.
 // Uncovered wins over covered when a line spans blocks of both kinds, so red
 // always flags lines that still need a test.
-func annotateFile(rel, src string, blocks []block, added []int, context int) htmlFile {
-	srcLines := strings.Split(src, "\n")
+func annotateFile(rel, src string, blocks []block, added []int, contextLines int) htmlFile {
+	srcLines := splitSourceLines(src)
 	total := len(srcLines)
 
 	classes := make([]string, total+1)
@@ -221,18 +298,25 @@ func annotateFile(rel, src string, blocks []block, added []int, context int) htm
 		if b.count == 0 {
 			class = "uncov"
 		}
-		for l := b.startLine; l <= b.endLine && l < len(classes); l++ {
-			if classes[l] != "uncov" {
-				classes[l] = class
+		lastLine := b.endLine
+		if lastLine >= len(classes) {
+			lastLine = len(classes) - 1
+		}
+		for lineNumber := b.startLine; lineNumber <= lastLine; lineNumber++ {
+			if classes[lineNumber] != "uncov" {
+				classes[lineNumber] = class
 			}
 		}
 	}
 
 	f := htmlFile{
-		Path:    rel,
-		ID:      strings.NewReplacer("/", "-", ".", "-").Replace(rel),
-		Percent: t.percent(),
-		Changed: len(added) > 0,
+		Path:         rel,
+		ID:           strings.NewReplacer("/", "-", ".", "-").Replace(rel),
+		PercentLabel: "n/a",
+		Changed:      len(added) > 0,
+	}
+	if t.total > 0 {
+		f.PercentLabel = fmt.Sprintf("%.1f%%", t.percent())
 	}
 
 	addedSet := map[int]bool{}
@@ -242,12 +326,12 @@ func annotateFile(rel, src string, blocks []block, added []int, context int) htm
 			visible[i] = true
 		}
 	} else {
-		for _, l := range added {
-			addedSet[l] = true
+		for _, lineNumber := range added {
+			addedSet[lineNumber] = true
 		}
-		for _, r := range diffRegions(added, total, context) {
-			for l := r.start; l <= r.end; l++ {
-				visible[l] = true
+		for _, r := range computeDiffRegions(added, total, contextLines) {
+			for lineNumber := r.start; lineNumber <= r.end; lineNumber++ {
+				visible[lineNumber] = true
 			}
 		}
 	}
@@ -276,6 +360,10 @@ func annotateFile(rel, src string, blocks []block, added []int, context int) htm
 	return f
 }
 
+// The rows inside <pre> are split across template lines with trim markers
+// ({{- ... }} and the empty comment {{- /**/}}). Without them the newlines
+// and indentation of the template itself would land in the <pre>, where
+// white-space: pre turns every one of them into a blank line on screen.
 var htmlTemplate = template.Must(template.New("report").Parse(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -403,7 +491,8 @@ body.mode-diff section:not(.changed) { display: none !important; }
   <h1>{{.Module}}</h1>
   <span class="total">{{printf "%.1f" .Percent}}%</span>
   {{if .Commit}}<span class="meta">commit {{.Commit}}</span>{{end}}
-  {{if .Diff}}<span class="meta diff-only">patch {{.PatchLabel}} · {{.RangeLabel}}</span>
+  {{if .SkippedFiles}}<span class="meta">{{.SkippedFiles}} source(s) unavailable</span>
+  {{end}}{{if .Diff}}<span class="meta diff-only">patch {{.PatchLabel}} · {{.RangeLabel}}</span>
   <span class="modes">
     <button type="button" data-mode="diff">Changed only</button>
     <button type="button" data-mode="all">All files</button>
@@ -417,15 +506,30 @@ body.mode-diff section:not(.changed) { display: none !important; }
 <main>
 <nav>
 {{range .Files}}<a href="#{{.ID}}" data-target="{{.ID}}"{{if .Changed}} class="changed"{{end}}>
-  <span>{{.Path}}</span><span class="pct all-only">{{printf "%.1f" .Percent}}%</span>
+  <span>{{.Path}}</span>
+  <span class="pct all-only">{{.PercentLabel}}</span>
   <span class="pct diff-only">{{.PatchLabel}}</span>
 </a>
 {{end}}</nav>
 {{range .Files}}<section id="{{.ID}}"{{if .Changed}} class="changed"{{end}}>
-<h2>{{.Path}} — <span class="all-only">{{printf "%.1f" .Percent}}%</span><span class="diff-only">patch {{.PatchLabel}}</span></h2>
-<pre>{{range .Lines}}{{if .Gap}}<span class="gap">&hellip; {{.Gap}} unchanged lines &hellip;</span>{{else}}<span class="{{.Class}}{{if .Added}} add{{end}}{{if not .Visible}} off{{end}}"><span class="n">{{.Num}}</span><span class="g"></span><span class="t">{{.Text}}</span></span>{{end}}{{end}}</pre>
+<h2>{{.Path}} —
+  <span class="all-only">{{.PercentLabel}}</span>
+  <span class="diff-only">patch {{.PatchLabel}}</span></h2>
+<pre>
+{{- range .Lines}}
+{{- if .Gap}}<span class="gap">&hellip; {{.Gap}} unchanged lines &hellip;</span>
+{{- else}}<span class="{{.Class}}{{if .Added}} add{{end}}{{if not .Visible}} off{{end}}">
+{{- /**/}}<span class="n">{{.Num}}</span><span class="g"></span>
+{{- /**/}}<span class="t">{{.Text}}</span></span>
+{{- end}}
+{{- end}}</pre>
 </section>
-{{end}}{{if .Diff}}<p class="empty diff-only"{{if .ChangedFiles}} hidden{{end}}>No coverable changes in {{.RangeLabel}}.</p>{{end}}</main>
+{{end}}
+{{- if .Diff}}<p class="empty diff-only"{{if .ChangedFiles}} hidden{{end}}>
+{{if .SkippedChangedFiles}}Nothing to show for {{.RangeLabel}}:
+{{.SkippedChangedFiles}} changed source(s) could not be read.
+{{else}}No coverable changes in {{.RangeLabel}}.{{end}}</p>{{end}}
+</main>
 <script>
 const links = document.querySelectorAll('nav a');
 const show = id => {
