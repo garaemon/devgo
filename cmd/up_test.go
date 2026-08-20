@@ -311,11 +311,12 @@ func TestDetermineContainerName(t *testing.T) {
 
 // mockDockerAPIClient implements the dockerAPIClient interface for testing
 type mockDockerAPIClient struct {
-	containers     []container.Summary
-	images         []image.Summary
-	listError      error
-	imageListError error
-	pullError      error
+	containers         []container.Summary
+	images             []image.Summary
+	listError          error
+	imageListError     error
+	pullError          error
+	createdHostConfigs []*container.HostConfig
 }
 
 func (m *mockDockerAPIClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
@@ -330,6 +331,7 @@ func (m *mockDockerAPIClient) ContainerStart(ctx context.Context, containerID st
 }
 
 func (m *mockDockerAPIClient) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *v1.Platform, containerName string) (container.CreateResponse, error) {
+	m.createdHostConfigs = append(m.createdHostConfigs, hostConfig)
 	return container.CreateResponse{}, nil
 }
 
@@ -1609,5 +1611,98 @@ func TestUpdateRemoteUserUID(t *testing.T) {
 					tt.description, tt.shouldUpdate, willExecute, shouldUpdate, hasCompose, targetUser)
 			}
 		})
+	}
+}
+
+func TestCreateAndStartContainerAppliesMounts(t *testing.T) {
+	mockAPI := &mockDockerAPIClient{}
+	dockerClient := &realDockerClient{client: mockAPI}
+
+	args := DockerRunArgs{
+		Name:            "test-container",
+		Image:           "node:22",
+		WorkspaceDir:    "/host/project",
+		WorkspaceFolder: "/workspace",
+		Mounts: []devcontainer.Mount{
+			{Type: "bind", Source: "/host/dir", Target: "/container/dir"},
+			{Type: "volume", Source: "myvolume", Target: "/data"},
+		},
+	}
+
+	if err := dockerClient.CreateAndStartContainer(context.Background(), args); err != nil {
+		t.Fatalf("CreateAndStartContainer() error = %v", err)
+	}
+
+	if len(mockAPI.createdHostConfigs) != 1 {
+		t.Fatalf("len(createdHostConfigs) = %d, want 1", len(mockAPI.createdHostConfigs))
+	}
+	hostConfig := mockAPI.createdHostConfigs[0]
+	if len(hostConfig.Mounts) != 2 {
+		t.Fatalf("len(hostConfig.Mounts) = %d, want 2", len(hostConfig.Mounts))
+	}
+	first := hostConfig.Mounts[0]
+	if string(first.Type) != "bind" || first.Source != "/host/dir" || first.Target != "/container/dir" {
+		t.Errorf("Mounts[0] = %+v, want bind /host/dir -> /container/dir", first)
+	}
+	second := hostConfig.Mounts[1]
+	if string(second.Type) != "volume" || second.Source != "myvolume" || second.Target != "/data" {
+		t.Errorf("Mounts[1] = %+v, want volume myvolume -> /data", second)
+	}
+}
+
+func TestCreateAndStartContainerDefaultsMountTypeToBind(t *testing.T) {
+	mockAPI := &mockDockerAPIClient{}
+	dockerClient := &realDockerClient{client: mockAPI}
+
+	args := DockerRunArgs{
+		Name:            "test-container",
+		Image:           "node:22",
+		WorkspaceDir:    "/host/project",
+		WorkspaceFolder: "/workspace",
+		Mounts: []devcontainer.Mount{
+			{Source: "/host/dir", Target: "/container/dir"},
+		},
+	}
+
+	if err := dockerClient.CreateAndStartContainer(context.Background(), args); err != nil {
+		t.Fatalf("CreateAndStartContainer() error = %v", err)
+	}
+
+	hostConfig := mockAPI.createdHostConfigs[0]
+	if len(hostConfig.Mounts) != 1 {
+		t.Fatalf("len(hostConfig.Mounts) = %d, want 1", len(hostConfig.Mounts))
+	}
+	if string(hostConfig.Mounts[0].Type) != "bind" {
+		t.Errorf("Mounts[0].Type = %q, want \"bind\"", hostConfig.Mounts[0].Type)
+	}
+}
+
+func TestStartContainerWithDockerPassesMounts(t *testing.T) {
+	mockClient := newMockDockerClient()
+	mockClient.addImage("node:22")
+
+	devContainer := &devcontainer.DevContainer{
+		Image: "node:22",
+		Mounts: []devcontainer.Mount{
+			{Type: "bind", Source: "/host/dir", Target: "/container/dir"},
+		},
+	}
+
+	err := startContainerWithDocker(context.Background(), devContainer,
+		"test-mounts-container", "/host/project", mockClient)
+	if err != nil {
+		t.Fatalf("startContainerWithDocker() error = %v", err)
+	}
+
+	if len(mockClient.createdContainers) != 1 {
+		t.Fatalf("len(createdContainers) = %d, want 1", len(mockClient.createdContainers))
+	}
+	created := mockClient.createdContainers[0]
+	if len(created.Mounts) != 1 {
+		t.Fatalf("len(created.Mounts) = %d, want 1", len(created.Mounts))
+	}
+	expected := devcontainer.Mount{Type: "bind", Source: "/host/dir", Target: "/container/dir"}
+	if created.Mounts[0] != expected {
+		t.Errorf("created.Mounts[0] = %+v, want %+v", created.Mounts[0], expected)
 	}
 }
