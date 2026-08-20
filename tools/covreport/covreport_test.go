@@ -10,6 +10,35 @@ import (
 	"testing"
 )
 
+func TestDiffRegions(t *testing.T) {
+	tests := []struct {
+		name    string
+		added   []int
+		total   int
+		context int
+		want    []region
+	}{
+		{"no added lines", nil, 20, 3, nil},
+		{"empty file", []int{1}, 0, 3, nil},
+		{"clamps at start", []int{2}, 20, 3, []region{{1, 5}}},
+		{"clamps at end", []int{19}, 20, 3, []region{{16, 20}}},
+		{"windows merge when touching", []int{5, 12}, 20, 3, []region{{2, 15}}},
+		{"windows stay apart", []int{5, 20}, 30, 3, []region{{2, 8}, {17, 23}}},
+		{"line past eof ignored", []int{5, 99}, 20, 3, []region{{2, 8}}},
+		{"line before start ignored", []int{0, 5}, 20, 3, []region{{2, 8}}},
+		{"zero context", []int{5, 6, 10}, 20, 0, []region{{5, 6}, {10, 10}}},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := diffRegions(testCase.added, testCase.total, testCase.context)
+			if !reflect.DeepEqual(got, testCase.want) {
+				t.Errorf("diffRegions(%v, %d, %d) = %v, want %v",
+					testCase.added, testCase.total, testCase.context, got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestParseDiffBytes(t *testing.T) {
 	diff := `diff --git a/cmd/up.go b/cmd/up.go
 --- a/cmd/up.go
@@ -110,6 +139,141 @@ func TestCompressRanges(t *testing.T) {
 	}
 }
 
+// source20 builds a 20-line file so line numbers match their content.
+func source20() string {
+	var source strings.Builder
+	for lineNumber := 1; lineNumber <= 20; lineNumber++ {
+		fmt.Fprintf(&source, "line %d\n", lineNumber)
+	}
+	// Trailing newline yields a final empty element, as os.ReadFile would.
+	return strings.TrimSuffix(source.String(), "\n")
+}
+
+func TestAnnotateFileDiff(t *testing.T) {
+	blocks := []block{
+		{startLine: 5, endLine: 6, numStmts: 2, count: 1},
+		{startLine: 12, endLine: 12, numStmts: 1, count: 0},
+	}
+	file := annotateFile("cmd/x.go", source20(), blocks, []int{5, 12}, 3)
+
+	if !file.Changed {
+		t.Error("file with added lines should be Changed")
+	}
+
+	var gaps []int
+	added := map[int]bool{}
+	visible := map[int]bool{}
+	for _, row := range file.Lines {
+		if row.Gap > 0 {
+			gaps = append(gaps, row.Gap)
+			continue
+		}
+		if row.Added {
+			added[row.Num] = true
+		}
+		if row.Visible {
+			visible[row.Num] = true
+		}
+	}
+
+	// Windows are 2-8 and 9-15 with context 3, which touch and merge into
+	// 2-15, leaving line 1 and lines 16-20 hidden.
+	if want := []int{1, 5}; !reflect.DeepEqual(gaps, want) {
+		t.Errorf("gap rows = %v, want %v", gaps, want)
+	}
+	if want := map[int]bool{5: true, 12: true}; !reflect.DeepEqual(added, want) {
+		t.Errorf("added lines = %v, want %v", added, want)
+	}
+	for n := 2; n <= 15; n++ {
+		if !visible[n] {
+			t.Errorf("line %d should be visible", n)
+		}
+	}
+	for _, n := range []int{1, 16, 20} {
+		if visible[n] {
+			t.Errorf("line %d should be hidden", n)
+		}
+	}
+	// Hidden lines stay in the slice for the all-files view, so the separator
+	// sits between the hidden run and the first visible line.
+	if got := file.Lines[0]; got.Gap != 0 || got.Num != 1 || got.Visible {
+		t.Errorf("row 0 should be hidden line 1, got %+v", got)
+	}
+	if got := file.Lines[1]; got.Gap != 1 {
+		t.Errorf("row 1 should be the leading gap, got %+v", got)
+	}
+	if got := file.Lines[2]; got.Num != 2 || !got.Visible {
+		t.Errorf("row 2 should be visible line 2, got %+v", got)
+	}
+	if got := file.Lines[len(file.Lines)-1]; got.Gap != 5 {
+		t.Errorf("last row should be the trailing gap, got %+v", got)
+	}
+}
+
+func TestAnnotateFileNoDiff(t *testing.T) {
+	blocks := []block{{startLine: 5, endLine: 6, numStmts: 2, count: 1}}
+	file := annotateFile("cmd/x.go", source20(), blocks, nil, 3)
+
+	if file.Changed {
+		t.Error("file without added lines should not be Changed")
+	}
+	if len(file.Lines) != 20 {
+		t.Fatalf("got %d rows, want 20", len(file.Lines))
+	}
+	for _, row := range file.Lines {
+		if row.Gap > 0 {
+			t.Errorf("line %d: no gap rows expected without a diff", row.Num)
+		}
+		if !row.Visible {
+			t.Errorf("line %d should be visible in the all-files view", row.Num)
+		}
+		if row.Added {
+			t.Errorf("line %d should not be marked added", row.Num)
+		}
+	}
+	if file.Lines[4].Class != "cov" || file.Lines[6].Class != "" {
+		t.Errorf("coverage classes misapplied: %+v", file.Lines[:7])
+	}
+}
+
+func TestAnnotateFileUncoveredWins(t *testing.T) {
+	blocks := []block{
+		{startLine: 5, endLine: 7, numStmts: 3, count: 4},
+		{startLine: 6, endLine: 6, numStmts: 1, count: 0},
+	}
+	file := annotateFile("cmd/x.go", source20(), blocks, nil, 3)
+	if got := file.Lines[5].Class; got != "uncov" {
+		t.Errorf("line 6 class = %q, want uncov", got)
+	}
+}
+
+func TestAggregatePatchTallies(t *testing.T) {
+	const module = "example.com/m"
+	head := profile{
+		module + "/cmd/a.go": {
+			{startLine: 10, endLine: 12, numStmts: 2, count: 1},
+			{startLine: 20, endLine: 22, numStmts: 3, count: 0},
+			{startLine: 40, endLine: 42, numStmts: 5, count: 1},
+		},
+	}
+	added := map[string][]int{
+		"cmd/a.go": {11, 21},
+		"cmd/b.go": {3}, // changed but absent from the profile
+	}
+
+	got := aggregatePatchTallies(head, added, module)
+
+	if want := (tally{covered: 2, total: 5}); got["cmd/a.go"] != want {
+		t.Errorf("cmd/a.go tally = %+v, want %+v", got["cmd/a.go"], want)
+	}
+	if _, ok := got["cmd/b.go"]; !ok {
+		t.Error("a changed file with no coverable statements must still be present")
+	}
+	if want := (tally{}); got["cmd/b.go"] != want {
+		t.Errorf("cmd/b.go tally = %+v, want zero", got["cmd/b.go"])
+	}
+}
+
 func TestAggregatePatchByFileDropsEmptyFiles(t *testing.T) {
 	const module = "example.com/m"
 	head := profile{
@@ -123,74 +287,102 @@ func TestAggregatePatchByFileDropsEmptyFiles(t *testing.T) {
 	}
 }
 
-// source20 builds a 20-line file so line numbers match their content.
-func source20() string {
-	var source strings.Builder
-	for lineNumber := 1; lineNumber <= 20; lineNumber++ {
-		fmt.Fprintf(&source, "line %d\n", lineNumber)
-	}
-	// Trailing newline yields a final empty element, as os.ReadFile would.
-	return strings.TrimSuffix(source.String(), "\n")
-}
-
-func TestAnnotateFile(t *testing.T) {
-	blocks := []block{{startLine: 5, endLine: 6, numStmts: 2, count: 1}}
-	file := annotateFile("cmd/x.go", source20(), blocks)
-
-	if len(file.Lines) != 20 {
-		t.Fatalf("got %d rows, want 20", len(file.Lines))
-	}
-	for index, row := range file.Lines {
-		if row.Num != index+1 {
-			t.Fatalf("row %d has line number %d", index, row.Num)
-		}
-	}
-	if file.Lines[4].Class != "cov" || file.Lines[5].Class != "cov" {
-		t.Errorf("lines 5-6 should be covered: %+v", file.Lines[4:6])
-	}
-	if file.Lines[6].Class != "" {
-		t.Errorf("line 7 is outside every block, got class %q", file.Lines[6].Class)
-	}
-	if file.ID != "cmd-x-go" {
-		t.Errorf("ID = %q, want cmd-x-go", file.ID)
-	}
-}
-
-// Uncovered has to win over covered when a line is inside blocks of both
-// kinds, so red always flags a line that still needs a test.
-func TestAnnotateFileUncoveredWins(t *testing.T) {
-	blocks := []block{
-		{startLine: 5, endLine: 7, numStmts: 3, count: 4},
-		{startLine: 6, endLine: 6, numStmts: 1, count: 0},
-	}
-	file := annotateFile("cmd/x.go", source20(), blocks)
-	if got := file.Lines[5].Class; got != "uncov" {
-		t.Errorf("line 6 class = %q, want uncov", got)
-	}
-}
-
-func TestRenderHTML(t *testing.T) {
+func TestRenderHTMLDiff(t *testing.T) {
 	const module = "example.com/m"
 	head := profile{
-		module + "/cmd/a.go": {{startLine: 5, endLine: 6, numStmts: 2, count: 1}},
+		module + "/cmd/a.go": {
+			{startLine: 5, endLine: 6, numStmts: 2, count: 1},
+			{startLine: 12, endLine: 12, numStmts: 1, count: 0},
+		},
+		module + "/cmd/untouched.go": {
+			{startLine: 1, endLine: 2, numStmts: 1, count: 1},
+		},
 	}
-	readSource := func(relPath string) ([]byte, error) { return []byte(source20()), nil }
+	options := htmlOptions{
+		Module:   module,
+		Added:    map[string][]int{"cmd/a.go": {5, 12}},
+		HaveDiff: true,
+		DiffBase: "main",
+		Context:  3,
+		Source:   func(relPath string) ([]byte, error) { return []byte(source20()), nil },
+	}
 
 	var rendered bytes.Buffer
-	if err := renderHTML(&rendered, head, module, "abc1234", readSource); err != nil {
+	if err := renderHTML(&rendered, head, options); err != nil {
 		t.Fatalf("renderHTML returned error: %v", err)
 	}
 	page := rendered.String()
 
 	for _, want := range []string{
-		`<title>example.com/m coverage</title>`,
-		`commit abc1234`,
-		`href="#cmd-a-go"`,
-		`<span class="cov">`,
+		`<body class="mode-diff">`,
+		`class="gap"`,
+		` add"`,
+		`data-mode="diff"`,
+		`main … working tree`,
+		`patch 66.7% (2/3 statements)`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("report should contain %q", want)
 		}
+	}
+	// The untouched file is still emitted, just filtered by CSS in diff mode.
+	if !strings.Contains(page, "cmd/untouched.go") {
+		t.Error("all-files view should still contain untouched files")
+	}
+}
+
+func TestRenderHTMLNoDiff(t *testing.T) {
+	const module = "example.com/m"
+	head := profile{
+		module + "/cmd/a.go": {{startLine: 5, endLine: 6, numStmts: 2, count: 1}},
+	}
+	options := htmlOptions{
+		Module: module,
+		Source: func(relPath string) ([]byte, error) { return []byte(source20()), nil },
+	}
+
+	var rendered bytes.Buffer
+	if err := renderHTML(&rendered, head, options); err != nil {
+		t.Fatalf("renderHTML returned error: %v", err)
+	}
+	page := rendered.String()
+
+	if !strings.Contains(page, `<body class="mode-all">`) {
+		t.Error("a report without a diff should open in all-files mode")
+	}
+	if strings.Contains(page, "data-mode=") {
+		t.Error("the mode toggle should not render without a diff")
+	}
+	if strings.Contains(page, `class="gap"`) {
+		t.Error("no elision separators should render without a diff")
+	}
+}
+
+func TestRenderHTMLEmptyDiff(t *testing.T) {
+	const module = "example.com/m"
+	head := profile{
+		module + "/cmd/a.go": {{startLine: 5, endLine: 6, numStmts: 2, count: 1}},
+	}
+	options := htmlOptions{
+		Module:   module,
+		Added:    map[string][]int{},
+		HaveDiff: true,
+		DiffBase: "main",
+		Context:  3,
+		Source:   func(relPath string) ([]byte, error) { return []byte(source20()), nil },
+	}
+
+	var rendered bytes.Buffer
+	if err := renderHTML(&rendered, head, options); err != nil {
+		t.Fatalf("renderHTML returned error: %v", err)
+	}
+	page := rendered.String()
+
+	if !strings.Contains(page, `<body class="mode-all">`) {
+		t.Error("a diff with no coverable changes should open in all-files mode")
+	}
+	if !strings.Contains(page, "No coverable changes") {
+		t.Error("the empty state should be rendered")
 	}
 }
 func TestParseProfileLine(t *testing.T) {
@@ -362,5 +554,155 @@ func TestParseProfileMissingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "absent.out")
 	if _, err := parseProfile(path, "example.com/m"); err == nil {
 		t.Fatal("expected an error for a profile that does not exist")
+	}
+}
+
+func TestRangeLabel(t *testing.T) {
+	tests := []struct {
+		name    string
+		options htmlOptions
+		want    string
+	}{
+		{"base against the working tree", htmlOptions{DiffBase: "main"}, "main … working tree"},
+		{"base against a revision", htmlOptions{DiffBase: "main", DiffHead: "HEAD"}, "main … HEAD"},
+		{"a pre-generated diff file", htmlOptions{DiffFile: "pr.diff"}, "pr.diff"},
+		{"no diff at all", htmlOptions{}, ""},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := rangeLabel(testCase.options); got != testCase.want {
+				t.Errorf("rangeLabel = %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
+// A file whose source cannot be read is dropped from the listing, but its
+// statements still belong in the header, which otherwise reports a percentage
+// the markdown report contradicts.
+func TestRenderHTMLHeaderCountsUnreadableSources(t *testing.T) {
+	const module = "example.com/m"
+	head := profile{
+		module + "/cmd/a.go": {{startLine: 1, endLine: 2, numStmts: 2, count: 1}},
+		module + "/cmd/b.go": {{startLine: 1, endLine: 2, numStmts: 4, count: 0}},
+	}
+	added := map[string][]int{"cmd/a.go": {1}, "cmd/b.go": {1}}
+	options := htmlOptions{
+		Module: module, Added: added, HaveDiff: true, DiffBase: "main", Context: 3,
+		Source: func(relPath string) ([]byte, error) {
+			if relPath == "cmd/b.go" {
+				return nil, fmt.Errorf("gone at this revision")
+			}
+			return []byte("x\ny\nz\n"), nil
+		},
+	}
+
+	var rendered bytes.Buffer
+	if err := renderHTML(&rendered, head, options); err != nil {
+		t.Fatalf("renderHTML returned error: %v", err)
+	}
+	page := rendered.String()
+
+	// The markdown report counts 2 of 6; the header must agree.
+	if want := "patch 33.3% (2/6 statements)"; !strings.Contains(page, want) {
+		t.Errorf("header should contain %q", want)
+	}
+	// Only the header carries the statement counts; cmd/a.go's own section
+	// legitimately reads "patch 100.0%", since it is fully covered.
+	if strings.Contains(page, "patch 100.0% (") {
+		t.Error("header counted only the files it could render")
+	}
+	if strings.Contains(page, "cmd/b.go") {
+		t.Error("an unreadable source should not be rendered as a section")
+	}
+}
+
+// renderHTML must not write through the added-line map it is handed.
+func TestRenderHTMLDoesNotMutateAddedLines(t *testing.T) {
+	const module = "example.com/m"
+	head := profile{
+		module + "/cmd/a.go": {{startLine: 1, endLine: 2, numStmts: 2, count: 1}},
+	}
+	added := map[string][]int{"cmd/a.go": {12, 5, 5}}
+	options := htmlOptions{
+		Module: module, Added: added, HaveDiff: true, DiffBase: "main", Context: 3,
+		Source: func(relPath string) ([]byte, error) { return []byte(source20()), nil },
+	}
+
+	var rendered bytes.Buffer
+	if err := renderHTML(&rendered, head, options); err != nil {
+		t.Fatalf("renderHTML returned error: %v", err)
+	}
+	if want := []int{12, 5, 5}; !reflect.DeepEqual(added["cmd/a.go"], want) {
+		t.Errorf("caller's slice = %v, want %v untouched", added["cmd/a.go"], want)
+	}
+}
+
+func TestLoadAddedLines(t *testing.T) {
+	diff := "+++ b/cmd/up.go\n@@ -10,0 +11,2 @@\n+a()\n+b()\n"
+	diffPath := filepath.Join(t.TempDir(), "pr.diff")
+	if err := os.WriteFile(diffPath, []byte(diff), 0o600); err != nil {
+		t.Fatalf("writing the diff: %v", err)
+	}
+
+	t.Run("from a diff file", func(t *testing.T) {
+		added, haveDiff, err := loadAddedLines(diffPath, "", "")
+		if err != nil {
+			t.Fatalf("loadAddedLines returned error: %v", err)
+		}
+		if !haveDiff {
+			t.Error("a diff was requested, so haveDiff must be true")
+		}
+		if want := []int{11, 12}; !reflect.DeepEqual(added["cmd/up.go"], want) {
+			t.Errorf("added = %v, want %v", added["cmd/up.go"], want)
+		}
+	})
+
+	t.Run("no diff requested", func(t *testing.T) {
+		added, haveDiff, err := loadAddedLines("", "", "")
+		if err != nil {
+			t.Fatalf("loadAddedLines returned error: %v", err)
+		}
+		if haveDiff {
+			t.Error("no diff was requested, so haveDiff must be false")
+		}
+		if added != nil {
+			t.Errorf("added = %v, want nil", added)
+		}
+	})
+
+	// The bool says a diff was *requested*, so it stays true when reading it
+	// failed — a caller that carries on past the error still knows a patch
+	// column was asked for.
+	t.Run("unreadable diff file", func(t *testing.T) {
+		_, haveDiff, err := loadAddedLines(filepath.Join(t.TempDir(), "absent.diff"), "", "")
+		if err == nil {
+			t.Fatal("expected an error for a diff file that does not exist")
+		}
+		if !haveDiff {
+			t.Error("haveDiff must report the request, not whether it succeeded")
+		}
+	})
+}
+
+func TestSourceFor(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hello.txt")
+	if err := os.WriteFile(path, []byte("hello\n"), 0o600); err != nil {
+		t.Fatalf("writing the file: %v", err)
+	}
+
+	// An empty revision reads the working tree; a named one goes through git,
+	// which TestGitShowReadsAFileAtARevision covers.
+	readSource := sourceFor("")
+	got, err := readSource(path)
+	if err != nil {
+		t.Fatalf("sourceFor(\"\") returned error: %v", err)
+	}
+	if string(got) != "hello\n" {
+		t.Errorf("contents = %q, want %q", got, "hello\n")
+	}
+	if _, err := readSource(filepath.Join(dir, "absent.txt")); err == nil {
+		t.Error("expected an error for a file that does not exist")
 	}
 }

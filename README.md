@@ -559,11 +559,19 @@ make test-coverage
 
 # Print the same markdown summary CI posts on pull requests
 make coverage-report
+
+# HTML report focused on the lines changed since a revision (default: main)
+make coverage-diff BASE=origin/main
 ```
 
 The HTML report has a per-file sidebar and marks covered and uncovered lines
 with tinted backgrounds, replacing the hard-to-read default theme of
 `go tool cover -html`.
+
+`make coverage-diff` renders only the changed hunks plus three lines of
+context on each side — `make coverage-diff CONTEXT=8` widens that. The page
+holds both views, so the header toggle switches between "Changed only" and
+"All files" without regenerating anything.
 
 #### What the numbers mean
 

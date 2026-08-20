@@ -38,6 +38,12 @@ func main() {
 	baseName := flag.String("base-name", "main", "display name of the base branch")
 	format := flag.String("format", "markdown",
 		"output format: markdown (PR report) or html (annotated source browser)")
+	diffBase := flag.String("diff-base", "",
+		"base revision; runs `git diff -U0 <base> [<head>]` for patch coverage")
+	diffHead := flag.String("diff-head", "",
+		"head revision for -diff-base (default: working tree); sources read via git show")
+	diffContext := flag.Int("diff-context", 3,
+		"context lines shown around changed lines in the html diff view")
 	flag.Parse()
 
 	if *coverPath == "" {
@@ -53,14 +59,40 @@ func main() {
 		*module = modulePath
 	}
 
+	if *diffPath != "" && *diffBase != "" {
+		fmt.Fprintln(os.Stderr, "covreport: cannot use -diff with -diff-base")
+		os.Exit(2)
+	}
+	if *diffHead != "" && *diffBase == "" {
+		fmt.Fprintln(os.Stderr, "covreport: -diff-head requires -diff-base")
+		os.Exit(2)
+	}
+
 	head, err := parseProfile(*coverPath, *module)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "covreport: %v\n", err)
 		os.Exit(1)
 	}
 
+	added, haveDiff, err := loadAddedLines(*diffPath, *diffBase, *diffHead)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "covreport: %v\n", err)
+		os.Exit(1)
+	}
+
 	if *format == "html" {
-		if err := renderHTML(os.Stdout, head, *module, *commit, nil); err != nil {
+		options := htmlOptions{
+			Module:   *module,
+			Commit:   *commit,
+			Added:    added,
+			HaveDiff: haveDiff,
+			DiffBase: *diffBase,
+			DiffHead: *diffHead,
+			DiffFile: *diffPath,
+			Context:  *diffContext,
+			Source:   sourceFor(*diffHead),
+		}
+		if err := renderHTML(os.Stdout, head, options); err != nil {
 			fmt.Fprintf(os.Stderr, "covreport: %v\n", err)
 			os.Exit(1)
 		}
@@ -80,18 +112,39 @@ func main() {
 		}
 	}
 
-	var added map[string][]int
-	haveDiff := false
-	if *diffPath != "" {
-		added, err = parseDiff(*diffPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "covreport: %v\n", err)
-			os.Exit(1)
-		}
-		haveDiff = true
-	}
-
 	fmt.Print(renderMarkdown(head, base, added, haveDiff, *module, *commit, *baseName))
+}
+
+// loadAddedLines resolves the added-line map from either a pre-generated diff
+// file (-diff) or a revision range (-diff-base/-diff-head). The bool reports
+// whether a diff was requested at all, so it is true whenever one of those
+// flags was given — including when reading or parsing it then failed. A caller
+// that chooses to carry on past the error therefore still knows a patch column
+// was asked for, rather than silently rendering the report without one.
+func loadAddedLines(diffPath, diffBase, diffHead string) (map[string][]int, bool, error) {
+	switch {
+	case diffPath != "":
+		added, err := parseDiff(diffPath)
+		return added, true, err
+	case diffBase != "":
+		diffText, err := gitDiff(diffBase, diffHead)
+		if err != nil {
+			return nil, true, err
+		}
+		source := fmt.Sprintf("git diff %s %s", diffBase, diffHead)
+		added, err := parseDiffBytes(diffText, source)
+		return added, true, err
+	}
+	return nil, false, nil
+}
+
+// sourceFor picks where head sources are read from: the working directory when
+// no head revision was named, otherwise that revision.
+func sourceFor(revision string) sourceReader {
+	if revision == "" {
+		return func(relPath string) ([]byte, error) { return os.ReadFile(relPath) }
+	}
+	return func(relPath string) ([]byte, error) { return gitShow(revision, relPath) }
 }
 
 func moduleFromGoMod(goModPath string) (string, error) {
@@ -224,8 +277,8 @@ func parseDiff(diffPath string) (map[string][]int, error) {
 	return parseDiffBytes(data, diffPath)
 }
 
-// parseDiffBytes is parseDiff over an in-memory diff; source only names the
-// input in error messages.
+// parseDiffBytes extracts added-line numbers per new-side path. source names
+// where the diff came from, for error messages.
 func parseDiffBytes(data []byte, source string) (map[string][]int, error) {
 	added := map[string][]int{}
 	currentFile := ""
@@ -379,41 +432,57 @@ func aggregatePatchByFile(head profile, added map[string][]int, module string) [
 	sort.Strings(files)
 
 	for _, file := range files {
-		addedLines := added[file]
-		isAddedLine := map[int]bool{}
-		for _, line := range addedLines {
-			isAddedLine[line] = true
-		}
-		blocks := head[module+"/"+file]
-		var stat fileStat
-		stat.file = file
-		for _, coverageBlock := range blocks {
-			touched := false
-			for line := coverageBlock.startLine; line <= coverageBlock.endLine; line++ {
-				if isAddedLine[line] {
-					touched = true
-					break
-				}
-			}
-			if !touched {
-				continue
-			}
-			stat.coverage.add(coverageBlock)
-			if coverageBlock.count == 0 {
-				for line := coverageBlock.startLine; line <= coverageBlock.endLine; line++ {
-					if isAddedLine[line] {
-						stat.uncovered = append(stat.uncovered, line)
-					}
-				}
-			}
-		}
+		stat := aggregatePatchForFile(file, added[file], head[module+"/"+file])
 		if stat.coverage.total > 0 {
-			sort.Ints(stat.uncovered)
-			stat.uncovered = dedupInts(stat.uncovered)
 			stats = append(stats, stat)
 		}
 	}
 	return stats
+}
+
+// aggregatePatchForFile sums one file's patch coverage: the statements of
+// every block overlapping an added line, plus the added lines that fall in
+// uncovered blocks.
+func aggregatePatchForFile(file string, addedLines []int, blocks []block) fileStat {
+	isAddedLine := map[int]bool{}
+	for _, line := range addedLines {
+		isAddedLine[line] = true
+	}
+	stat := fileStat{file: file}
+	for _, coverageBlock := range blocks {
+		touched := false
+		for line := coverageBlock.startLine; line <= coverageBlock.endLine; line++ {
+			if isAddedLine[line] {
+				touched = true
+				break
+			}
+		}
+		if !touched {
+			continue
+		}
+		stat.coverage.add(coverageBlock)
+		if coverageBlock.count == 0 {
+			for line := coverageBlock.startLine; line <= coverageBlock.endLine; line++ {
+				if isAddedLine[line] {
+					stat.uncovered = append(stat.uncovered, line)
+				}
+			}
+		}
+	}
+	sort.Ints(stat.uncovered)
+	stat.uncovered = dedupInts(stat.uncovered)
+	return stat
+}
+
+// aggregatePatchTallies sums the patch coverage of every changed file,
+// including files with no coverable statements, which the html sidebar still
+// needs to list. aggregatePatchByFile drops those; this keeps them.
+func aggregatePatchTallies(head profile, added map[string][]int, module string) map[string]tally {
+	talliesByFile := make(map[string]tally, len(added))
+	for file, addedLines := range added {
+		talliesByFile[file] = aggregatePatchForFile(file, addedLines, head[module+"/"+file]).coverage
+	}
+	return talliesByFile
 }
 
 // dedupInts removes adjacent duplicates from a sorted slice, compacting in
@@ -516,7 +585,8 @@ func renderMarkdown(head, base profile, added map[string][]int, haveDiff bool,
 
 	report.WriteString("---\n")
 	report.WriteString("To browse the full HTML report locally, check out this branch and run " +
-		"`make test-coverage`, then open `coverage.html`.\n")
+		"`make test-coverage`, then open `coverage.html`. For a view of just these " +
+		"changed lines, run `make coverage-diff BASE=" + baseName + "`.\n")
 	return report.String()
 }
 
