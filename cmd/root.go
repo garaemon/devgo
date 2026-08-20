@@ -41,6 +41,13 @@ func parseAllFlags(args []string) ([]string, error) {
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		// For "exec", everything after the command to run belongs to that
+		// command, so stop interpreting flags once it appears. Without this,
+		// "devgo exec claude --version" would print devgo's own version.
+		if isExecPassthroughStarted(nonFlagArgs) {
+			nonFlagArgs = append(nonFlagArgs, arg)
+			continue
+		}
 		if arg == "--help" || arg == "-h" {
 			showHelp = true
 		} else if arg == "--version" {
@@ -99,6 +106,13 @@ func parseAllFlags(args []string) ([]string, error) {
 	}
 
 	return nonFlagArgs, nil
+}
+
+// isExecPassthroughStarted reports whether flag parsing reached the command
+// that "devgo exec" runs inside the container. From that point on, remaining
+// arguments are passed to the container command verbatim.
+func isExecPassthroughStarted(nonFlagArgs []string) bool {
+	return len(nonFlagArgs) >= 2 && nonFlagArgs[0] == "exec"
 }
 
 func Execute() error {
@@ -272,7 +286,7 @@ Examples:
 }
 
 func showVersionInfo() {
-	fmt.Println("devgo version 0.4.0")
+	fmt.Println("devgo version 0.5.0")
 }
 
 func findDevcontainerConfig(configPath string) (string, error) {
