@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -122,6 +123,76 @@ func TestAggregatePatchByFileDropsEmptyFiles(t *testing.T) {
 	}
 }
 
+// source20 builds a 20-line file so line numbers match their content.
+func source20() string {
+	var source strings.Builder
+	for lineNumber := 1; lineNumber <= 20; lineNumber++ {
+		fmt.Fprintf(&source, "line %d\n", lineNumber)
+	}
+	// Trailing newline yields a final empty element, as os.ReadFile would.
+	return strings.TrimSuffix(source.String(), "\n")
+}
+
+func TestAnnotateFile(t *testing.T) {
+	blocks := []block{{startLine: 5, endLine: 6, numStmts: 2, count: 1}}
+	file := annotateFile("cmd/x.go", source20(), blocks)
+
+	if len(file.Lines) != 20 {
+		t.Fatalf("got %d rows, want 20", len(file.Lines))
+	}
+	for index, row := range file.Lines {
+		if row.Num != index+1 {
+			t.Fatalf("row %d has line number %d", index, row.Num)
+		}
+	}
+	if file.Lines[4].Class != "cov" || file.Lines[5].Class != "cov" {
+		t.Errorf("lines 5-6 should be covered: %+v", file.Lines[4:6])
+	}
+	if file.Lines[6].Class != "" {
+		t.Errorf("line 7 is outside every block, got class %q", file.Lines[6].Class)
+	}
+	if file.ID != "cmd-x-go" {
+		t.Errorf("ID = %q, want cmd-x-go", file.ID)
+	}
+}
+
+// Uncovered has to win over covered when a line is inside blocks of both
+// kinds, so red always flags a line that still needs a test.
+func TestAnnotateFileUncoveredWins(t *testing.T) {
+	blocks := []block{
+		{startLine: 5, endLine: 7, numStmts: 3, count: 4},
+		{startLine: 6, endLine: 6, numStmts: 1, count: 0},
+	}
+	file := annotateFile("cmd/x.go", source20(), blocks)
+	if got := file.Lines[5].Class; got != "uncov" {
+		t.Errorf("line 6 class = %q, want uncov", got)
+	}
+}
+
+func TestRenderHTML(t *testing.T) {
+	const module = "example.com/m"
+	head := profile{
+		module + "/cmd/a.go": {{startLine: 5, endLine: 6, numStmts: 2, count: 1}},
+	}
+	readSource := func(relPath string) ([]byte, error) { return []byte(source20()), nil }
+
+	var rendered bytes.Buffer
+	if err := renderHTML(&rendered, head, module, "abc1234", readSource); err != nil {
+		t.Fatalf("renderHTML returned error: %v", err)
+	}
+	page := rendered.String()
+
+	for _, want := range []string{
+		`<title>example.com/m coverage</title>`,
+		`commit abc1234`,
+		`href="#cmd-a-go"`,
+		`<span class="cov">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("report should contain %q", want)
+		}
+	}
+}
 func TestParseProfileLine(t *testing.T) {
 	tests := []struct {
 		name      string

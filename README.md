@@ -550,16 +550,20 @@ make ci
 ### Test Coverage
 
 Coverage is computed in-repo — there is no external coverage service.
-`tools/covreport` reads a `go test -coverprofile` profile and renders it as a
-markdown summary.
+`tools/covreport` reads a `go test -coverprofile` profile and renders it as
+either a markdown summary or a self-contained HTML report.
 
 ```bash
-# Run tests and write coverage.out plus an HTML report
+# Run tests and write an HTML coverage browser to coverage.html
 make test-coverage
 
 # Print the same markdown summary CI posts on pull requests
 make coverage-report
 ```
+
+The HTML report has a per-file sidebar and marks covered and uncovered lines
+with tinted backgrounds, replacing the hard-to-read default theme of
+`go tool cover -html`.
 
 #### What the numbers mean
 
