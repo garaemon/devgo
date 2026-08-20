@@ -3,8 +3,12 @@ name: Test
 on:
   push:
     branches: [ main ]
+  # Every pull request, whatever its base. Restricting this to main would skip
+  # CI entirely on stacked pull requests, which target the branch below them.
   pull_request:
-    branches: [ main ]
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -33,28 +37,108 @@ jobs:
     - name: Download dependencies
       run: go mod download
       
-    - name: Run tests with coverage
-      run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
-      
+    - name: Run tests
+      run: go test -v -race ./...
+
     - name: Build
       run: make build
-      
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: ./coverage.out
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
-        
+
     - name: Run basic smoke test
       run: |
         ./devgo --help
 
+  # Computes project and patch coverage for pull requests and maintains a
+  # single sticky PR comment with the results, replacing the old Codecov
+  # upload. Informational only: the job never fails on coverage percentages.
+  coverage:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    # A force-push cancels the run for the old head so a stale run can never
+    # overwrite the comment for the new head.
+    concurrency:
+      group: coverage-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-mod-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run tests with coverage (head)
+      run: go test -coverprofile=coverage.out -covermode=atomic ./...
+
+    # The base profile is regenerated from the merge-base in a worktree on
+    # every run: slower than caching a baseline, but immune to artifact
+    # expiry and always comparable to the exact commit the PR diffs against.
+    - name: Run tests with coverage (base)
+      run: |
+        BASE=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+        echo "BASE=$BASE" >> "$GITHUB_ENV"
+        git worktree add /tmp/base "$BASE"
+        cd /tmp/base
+        go mod download
+        go test -coverprofile="$GITHUB_WORKSPACE/base-coverage.out" -covermode=atomic ./... \
+          || echo "::warning::base tests failed; project delta will be omitted"
+
+    - name: Generate coverage report
+      run: |
+        git diff -U0 "$BASE" HEAD > pr.diff
+        HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+        ARGS="-cover coverage.out -diff pr.diff"
+        ARGS="$ARGS -commit ${HEAD_SHA:0:7}"
+        ARGS="$ARGS -base-name ${{ github.base_ref }}"
+        if [ -s base-coverage.out ]; then
+          ARGS="$ARGS -base-cover base-coverage.out"
+        fi
+        go run ./tools/covreport $ARGS > coverage-report.md
+        cat coverage-report.md >> "$GITHUB_STEP_SUMMARY"
+
+    # Fork PRs have no write token, so the comment step is skipped there;
+    # the report is still visible in the job summary above.
+    - name: Post sticky PR comment
+      if: github.event.pull_request.head.repo.full_name == github.repository
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const body = fs.readFileSync('coverage-report.md', 'utf8');
+          const marker = '<!-- devgo-coverage-report -->';
+          const {owner, repo} = context.repo;
+          const issue_number = context.issue.number;
+          const comments = await github.paginate(github.rest.issues.listComments,
+            {owner, repo, issue_number, per_page: 100});
+          const existing = comments.find(c => c.body && c.body.includes(marker));
+          if (existing) {
+            await github.rest.issues.updateComment(
+              {owner, repo, comment_id: existing.id, body});
+          } else {
+            await github.rest.issues.createComment({owner, repo, issue_number, body});
+          }
+
   integration:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
         go-version: ['1.21', '1.22', '1.23', '1.24']

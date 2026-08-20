@@ -547,3 +547,41 @@ make dev
 make ci
 ```
 
+### Test Coverage
+
+Coverage is computed in-repo — there is no external coverage service.
+`tools/covreport` reads a `go test -coverprofile` profile and renders it as a
+markdown summary.
+
+```bash
+# Run tests and write coverage.out plus an HTML report
+make test-coverage
+
+# Print the same markdown summary CI posts on pull requests
+make coverage-report
+```
+
+#### What the numbers mean
+
+Both percentages are over Go *statements*, as reported by the coverage
+profile — not over lines or branches.
+
+- **Project coverage** — covered statements ÷ total statements across the
+  whole module. On pull requests it is shown alongside the baseline value and
+  the delta.
+- **Patch coverage** — the same ratio restricted to statements on lines the
+  pull request *adds*. Lines that are only deleted or moved do not count, and
+  a change with no coverable added lines reports `n/a`.
+
+Files that are not production code are excluded from both: `*_test.go`, and
+anything under `test/` or `tools/`.
+
+#### How CI reports it
+
+On every pull request the `coverage` job runs the coverage tests on the head
+commit and on the merge-base, writes the report to the job summary, and
+maintains a **single sticky comment** on the PR that is updated in place on
+each push. The job is informational — it never fails on a coverage
+percentage. Pull requests from forks get the job summary but no comment,
+since they have no write token.
+
