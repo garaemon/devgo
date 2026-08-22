@@ -22,6 +22,14 @@ type ApplyInput struct {
 	// files are written under BuildContext/.devgo-features so that COPY can reach
 	// them.
 	BuildContext string
+	// BaseUser is the user BaseImage is configured to run as. Feature install
+	// scripts need root, so the generated Dockerfile switches to root and then
+	// back to this user. When it is empty, ResolveBaseUser is consulted.
+	BaseUser string
+	// ResolveBaseUser looks up BaseImage's user when BaseUser is not already
+	// known. It is optional, but omitting both leaves the resulting image running
+	// as root even when the base image specified a different user.
+	ResolveBaseUser ImageUserResolver
 }
 
 // ApplyResult describes the generated build artifacts.
@@ -47,6 +55,16 @@ func ApplyFeatures(in ApplyInput) (*ApplyResult, error) {
 		return nil, fmt.Errorf("no features to apply")
 	}
 
+	baseUser := in.BaseUser
+	if baseUser == "" && in.ResolveBaseUser != nil {
+		resolved, err := in.ResolveBaseUser(in.BaseImage)
+		if err != nil {
+			return nil, fmt.Errorf("failed to determine the user of base image %q: %w",
+				in.BaseImage, err)
+		}
+		baseUser = resolved
+	}
+
 	featuresDir := filepath.Join(in.BuildContext, featuresSubdir)
 	if err := os.MkdirAll(featuresDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create features directory: %w", err)
@@ -70,7 +88,8 @@ func ApplyFeatures(in ApplyInput) (*ApplyResult, error) {
 		optionValues[ref.Raw] = pf.Metadata.ResolveOptionValues(spec.Options)
 	}
 
-	dockerfile := GenerateWrapperDockerfile(in.BaseImage, pulled, featuresSubdir, optionValues)
+	dockerfile := GenerateWrapperDockerfile(
+		in.BaseImage, pulled, featuresSubdir, optionValues, baseUser)
 	dockerfilePath := filepath.Join(featuresDir, "Dockerfile.devgo")
 	//nolint:gosec // generated build artifact, not sensitive
 	if err := os.WriteFile(dockerfilePath, []byte(dockerfile), 0o644); err != nil {

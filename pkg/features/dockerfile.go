@@ -18,11 +18,18 @@ const featureInstallDir = "/tmp/devgo-features"
 // contextSubdir is the path (relative to the Docker build context) that contains
 // the per-feature directories. optionValues maps a feature reference (OCIRef.Raw)
 // to its resolved option environment variables.
+//
+// baseUser is the user baseImage is configured to run as. Installing features
+// requires root, so the generated Dockerfile switches to root and then switches
+// back, leaving the image running as the same user it started as. An empty
+// baseUser means the base image did not set a user, so no USER instruction is
+// emitted at the end.
 func GenerateWrapperDockerfile(
 	baseImage string,
 	feats []*PulledFeature,
 	contextSubdir string,
 	optionValues map[string]map[string]string,
+	baseUser string,
 ) string {
 	var b strings.Builder
 
@@ -52,6 +59,12 @@ func GenerateWrapperDockerfile(
 
 	if len(feats) > 0 {
 		b.WriteString(fmt.Sprintf("\nRUN rm -rf %s\n", featureInstallDir))
+	}
+
+	// Restore the base image's user so that features never silently promote the
+	// container to root.
+	if baseUser != "" {
+		b.WriteString(fmt.Sprintf("\nUSER %s\n", baseUser))
 	}
 
 	return b.String()
