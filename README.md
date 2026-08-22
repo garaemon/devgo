@@ -25,6 +25,7 @@ A Go CLI tool that runs Docker or Podman containers based on devcontainer.json c
 - **Container Management** - Proper labeling and workspace isolation
 - **Interactive TTY** - Full terminal support for shell sessions
 - **Personal customization** - Per-user dotfiles repository and shell override that stay out of the team's `devcontainer.json` (see [docs/dotfiles.md](docs/dotfiles.md))
+- **Global profiles** - Named, reusable container configs under your home directory for repositories that have no `devcontainer.json` (see [docs/profiles.md](docs/profiles.md))
 
 ### ❌ Not Yet Implemented
 

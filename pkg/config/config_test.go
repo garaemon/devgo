@@ -205,3 +205,112 @@ func TestUserConfigPath_DefaultsToHome(t *testing.T) {
 		t.Errorf("UserConfigPath() = %q, want %q", got, want)
 	}
 }
+
+func TestProfilePath_FromXDGEnv(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	got, err := ProfilePath("go")
+	if err != nil {
+		t.Fatalf("ProfilePath() error = %v", err)
+	}
+	want := filepath.Join(tmp, "devgo", "profiles", "go", "devcontainer.json")
+	if got != want {
+		t.Errorf("ProfilePath() = %q, want %q", got, want)
+	}
+}
+
+func TestProfilePath_DefaultsToHome(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", tmp)
+
+	got, err := ProfilePath("rust")
+	if err != nil {
+		t.Fatalf("ProfilePath() error = %v", err)
+	}
+	want := filepath.Join(tmp, ".config", "devgo", "profiles", "rust", "devcontainer.json")
+	if got != want {
+		t.Errorf("ProfilePath() = %q, want %q", got, want)
+	}
+}
+
+func TestProfilePath_RejectsInvalidNames(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	invalidNames := []string{
+		"",
+		".",
+		"..",
+		"../escape",
+		"foo/bar",
+		"/absolute",
+	}
+	for _, name := range invalidNames {
+		if _, err := ProfilePath(name); err == nil {
+			t.Errorf("ProfilePath(%q) expected error, got nil", name)
+		}
+	}
+}
+
+func TestValidateProfileName_AcceptsSimpleNames(t *testing.T) {
+	validNames := []string{"go", "rust", "my-profile", "profile_1", "v1.2"}
+	for _, name := range validNames {
+		if err := ValidateProfileName(name); err != nil {
+			t.Errorf("ValidateProfileName(%q) unexpected error: %v", name, err)
+		}
+	}
+}
+
+func TestListProfiles_MissingDirIsEmpty(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	names, err := ListProfiles()
+	if err != nil {
+		t.Fatalf("ListProfiles() error = %v", err)
+	}
+	if len(names) != 0 {
+		t.Errorf("ListProfiles() = %v, want empty", names)
+	}
+}
+
+func TestListProfiles_OnlyDirsWithConfig(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	profilesDir := filepath.Join(tmp, "devgo", "profiles")
+	// Two valid profiles (go, rust), one directory without devcontainer.json
+	// (empty), and a stray file that must be ignored.
+	for _, name := range []string{"rust", "go"} {
+		dir := filepath.Join(profilesDir, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("failed to create profile dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "devcontainer.json"), []byte("{}"), 0o600); err != nil {
+			t.Fatalf("failed to write profile config: %v", err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(profilesDir, "empty"), 0o755); err != nil {
+		t.Fatalf("failed to create empty profile dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(profilesDir, "stray.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("failed to write stray file: %v", err)
+	}
+
+	names, err := ListProfiles()
+	if err != nil {
+		t.Fatalf("ListProfiles() error = %v", err)
+	}
+
+	want := []string{"go", "rust"} // sorted, excludes empty and stray
+	if len(names) != len(want) {
+		t.Fatalf("ListProfiles() = %v, want %v", names, want)
+	}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Errorf("ListProfiles()[%d] = %q, want %q", i, names[i], want[i])
+		}
+	}
+}
