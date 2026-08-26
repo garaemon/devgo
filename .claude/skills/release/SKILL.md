@@ -144,9 +144,11 @@ Wait for CI to finish:
 gh pr checks <PR#> --watch
 ```
 
-`codecov/patch` is expected to fail on a release PR — a one-line version bump adds no
-covered code, so the patch has 0% coverage. This is not a blocker; every prior release PR
-hit the same thing. All other checks (test, integration, lint, codecov/project) must pass.
+The `coverage` job posts an informational sticky PR comment (project/patch coverage);
+on a release PR the patch coverage will read n/a or 0% because a one-line version bump
+adds no covered code — expected, and never a blocker since the job doesn't fail on
+percentages. The checks that must pass are test, integration, integration-podman, and
+lint.
 
 Do not merge on your own. Report the CI result to the user and wait for their explicit
 approval — merging is the point of no return for a release. This is a required checkpoint.

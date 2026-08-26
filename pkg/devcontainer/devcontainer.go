@@ -1,10 +1,12 @@
 package devcontainer
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/titanous/json5"
 )
@@ -32,10 +34,67 @@ const (
 	WaitForPostStartCommand     = "postStartCommand"
 )
 
+// Mount represents an entry of the "mounts" field. The devcontainer spec
+// allows both an object form ({"type": ..., "source": ..., "target": ...})
+// and a Docker CLI style string form ("source=...,target=...,type=...").
 type Mount struct {
 	Type   string `json:"type,omitempty"`
 	Source string `json:"source,omitempty"`
 	Target string `json:"target,omitempty"`
+}
+
+// UnmarshalJSON accepts both the object form and the string form of a mount.
+func (m *Mount) UnmarshalJSON(data []byte) error {
+	var stringForm string
+	if err := json.Unmarshal(data, &stringForm); err == nil {
+		parsed, parseErr := parseMountString(stringForm)
+		if parseErr != nil {
+			return parseErr
+		}
+		*m = parsed
+		return nil
+	}
+
+	// Use a local alias type to avoid infinite recursion into UnmarshalJSON.
+	type mountObject Mount
+	var objectForm mountObject
+	if err := json.Unmarshal(data, &objectForm); err != nil {
+		return err
+	}
+	*m = Mount(objectForm)
+	return nil
+}
+
+// parseMountString parses a Docker CLI style mount string such as
+// "source=/host,target=/container,type=bind". The keys "src" and "dst"
+// (or "destination") are accepted as aliases following Docker's --mount
+// syntax. Unknown keys are ignored so options like "consistency" or
+// "readonly" do not fail the parse.
+func parseMountString(value string) (Mount, error) {
+	var mount Mount
+	for _, field := range strings.Split(value, ",") {
+		if field == "" {
+			continue
+		}
+		keyValue := strings.SplitN(field, "=", 2)
+		if len(keyValue) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(keyValue[0])
+		fieldValue := strings.TrimSpace(keyValue[1])
+		switch key {
+		case "type":
+			mount.Type = fieldValue
+		case "source", "src":
+			mount.Source = fieldValue
+		case "target", "dst", "destination":
+			mount.Target = fieldValue
+		}
+	}
+	if mount.Target == "" {
+		return Mount{}, fmt.Errorf("invalid mount string %q: missing target", value)
+	}
+	return mount, nil
 }
 
 type DevContainer struct {

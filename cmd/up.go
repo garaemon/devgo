@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/garaemon/devgo/pkg/config"
@@ -31,6 +32,7 @@ type DockerRunArgs struct {
 	WorkspaceDir    string
 	WorkspaceFolder string
 	Env             map[string]string
+	Mounts          []devcontainer.Mount
 }
 
 // DockerClient interface for Docker operations
@@ -184,7 +186,7 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 			return fmt.Errorf("container '%s' is already running", containerName)
 		}
 		debugf("Container '%s' exists but is stopped, removing and recreating it to apply configuration changes\n", containerName)
-		
+
 		// Use raw docker client to remove the container
 		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 		if err == nil {
@@ -210,6 +212,7 @@ func startContainerWithDocker(ctx context.Context, devContainer *devcontainer.De
 		WorkspaceDir:    workspaceDir,
 		WorkspaceFolder: devContainer.GetWorkspaceFolder(),
 		Env:             expandedEnv,
+		Mounts:          devContainer.Mounts,
 	}
 
 	if err := dockerClient.CreateAndStartContainer(ctx, dockerArgs); err != nil {
@@ -478,7 +481,12 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 	}
 
 	hostConfig := &container.HostConfig{
-		Binds: binds,
+		Binds:  binds,
+		Mounts: buildMounts(args.Mounts),
+	}
+
+	if len(args.Mounts) > 0 {
+		debugf("Applying %d mounts from devcontainer.json\n", len(args.Mounts))
 	}
 
 	// Create the container
@@ -495,6 +503,25 @@ func (r *realDockerClient) CreateAndStartContainer(ctx context.Context, args Doc
 
 	debugf("Container '%s' started successfully\n", args.Name)
 	return nil
+}
+
+// buildMounts converts devcontainer.json mounts into Docker API mounts.
+// The mount type defaults to "bind" when omitted, matching the behavior
+// of the official devcontainer-cli.
+func buildMounts(mounts []devcontainer.Mount) []mount.Mount {
+	var dockerMounts []mount.Mount
+	for _, m := range mounts {
+		mountType := m.Type
+		if mountType == "" {
+			mountType = "bind"
+		}
+		dockerMounts = append(dockerMounts, mount.Mount{
+			Type:   mount.Type(mountType),
+			Source: m.Source,
+			Target: m.Target,
+		})
+	}
+	return dockerMounts
 }
 
 func (r *realDockerClient) ImageExists(ctx context.Context, imageName string) (bool, error) {
