@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -565,6 +566,102 @@ func TestExecute_Help(t *testing.T) {
 	// Verify that usage was printed to stderr
 	if !strings.Contains(stderrOutput, "devgo - Run commands in a devcontainer") {
 		t.Errorf("stderr should contain usage help, got: %s", stderrOutput)
+	}
+}
+
+// clearProfileSelection disables global profile lookup for the duration of the
+// test so findDevcontainerConfig falls through to local discovery even when the
+// developer's shell exports DEVGO_PROFILE.
+func clearProfileSelection(t *testing.T) {
+	t.Helper()
+	originalProfileName := profileName
+	profileName = ""
+	t.Cleanup(func() { profileName = originalProfileName })
+	t.Setenv("DEVGO_PROFILE", "")
+}
+
+func TestFindDevcontainerConfigUsesWorkspaceFolder(t *testing.T) {
+	workspaceDir := t.TempDir()
+	devcontainerDir := workspaceDir + "/.devcontainer"
+	if err := os.Mkdir(devcontainerDir, 0o755); err != nil {
+		t.Fatalf("failed to create .devcontainer dir: %v", err)
+	}
+	expectedConfig := devcontainerDir + "/devcontainer.json"
+	if err := os.WriteFile(expectedConfig, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("failed to write devcontainer.json: %v", err)
+	}
+
+	// Run from a directory that has no devcontainer.json so discovery
+	// must rely on the --workspace-folder value, not the cwd.
+	unrelatedDir := t.TempDir()
+	originalCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get cwd: %v", err)
+	}
+	if err := os.Chdir(unrelatedDir); err != nil {
+		t.Fatalf("failed to chdir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(originalCwd); err != nil {
+			t.Errorf("failed to restore cwd: %v", err)
+		}
+	}()
+
+	originalWorkspaceFolder := workspaceFolder
+	workspaceFolder = workspaceDir
+	defer func() { workspaceFolder = originalWorkspaceFolder }()
+
+	clearProfileSelection(t)
+
+	result, err := findDevcontainerConfig("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != expectedConfig {
+		t.Errorf("findDevcontainerConfig() = %q, want %q", result, expectedConfig)
+	}
+}
+
+func TestFindDevcontainerConfigFallsBackToCwd(t *testing.T) {
+	workspaceDir := t.TempDir()
+	devcontainerDir := workspaceDir + "/.devcontainer"
+	if err := os.Mkdir(devcontainerDir, 0o755); err != nil {
+		t.Fatalf("failed to create .devcontainer dir: %v", err)
+	}
+	expectedConfig := devcontainerDir + "/devcontainer.json"
+	if err := os.WriteFile(expectedConfig, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("failed to write devcontainer.json: %v", err)
+	}
+
+	originalCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get cwd: %v", err)
+	}
+	if err := os.Chdir(workspaceDir); err != nil {
+		t.Fatalf("failed to chdir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(originalCwd); err != nil {
+			t.Errorf("failed to restore cwd: %v", err)
+		}
+	}()
+
+	originalWorkspaceFolder := workspaceFolder
+	workspaceFolder = ""
+	defer func() { workspaceFolder = originalWorkspaceFolder }()
+
+	clearProfileSelection(t)
+
+	result, err := findDevcontainerConfig("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Resolve symlinks because t.TempDir may live under a symlinked path
+	// (e.g. /tmp -> /private/tmp) and os.Getwd returns the resolved path.
+	resolvedResult, _ := filepath.EvalSymlinks(result)
+	resolvedExpected, _ := filepath.EvalSymlinks(expectedConfig)
+	if resolvedResult != resolvedExpected {
+		t.Errorf("findDevcontainerConfig() = %q, want %q", resolvedResult, resolvedExpected)
 	}
 }
 
