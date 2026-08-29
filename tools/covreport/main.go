@@ -36,6 +36,8 @@ func main() {
 	module := flag.String("module", "", "module path (default: read from go.mod)")
 	commit := flag.String("commit", "", "head commit SHA to show in the report")
 	baseName := flag.String("base-name", "main", "display name of the base branch")
+	format := flag.String("format", "markdown",
+		"output format: markdown (PR report) or html (annotated source browser)")
 	flag.Parse()
 
 	if *coverPath == "" {
@@ -55,6 +57,18 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "covreport: %v\n", err)
 		os.Exit(1)
+	}
+
+	if *format == "html" {
+		if err := renderHTML(os.Stdout, head, *module, *commit, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "covreport: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *format != "markdown" {
+		fmt.Fprintf(os.Stderr, "covreport: unknown format %q\n", *format)
+		os.Exit(2)
 	}
 
 	var base profile
